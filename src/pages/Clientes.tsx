@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Plus, ChevronRight, FileText, Truck, Users, Activity, X } from 'lucide-react';
 import { useUser } from '../store/UserContext';
 import { format } from 'date-fns';
+import { formatCuit } from '../utils/formatters';
 
 interface Client {
   id: number;
@@ -175,7 +176,7 @@ export default function Clientes() {
             >
               <div>
                 <h3 className="font-semibold text-gray-900">{client.razon_social}</h3>
-                <p className="text-sm text-gray-500">CUIT: {client.cuit}</p>
+                <p className="text-sm text-gray-500">CUIT: {formatCuit(client.cuit)}</p>
               </div>
               <ChevronRight className={`w-5 h-5 ${selectedClient?.id === client.id ? 'text-indigo-500' : 'text-gray-400'}`} />
             </button>
@@ -195,7 +196,7 @@ export default function Clientes() {
                 <ChevronRight className="w-4 h-4 rotate-180 mr-1" /> Volver a lista
               </button>
               <h2 className="text-2xl font-bold text-gray-900">{selectedClient.razon_social}</h2>
-              <p className="text-gray-500">CUIT: {selectedClient.cuit}</p>
+              <p className="text-gray-500">CUIT: {formatCuit(selectedClient.cuit)}</p>
             </div>
             <button
               onClick={() => setShowInteractionModal(true)}

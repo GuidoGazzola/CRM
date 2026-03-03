@@ -22,9 +22,42 @@ async function startServer() {
       INSERT INTO clients (razon_social, cuit, calificacion, consumos_tipicos, demora_promedio_pago, plazo_de_pago)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
-    const info = stmt.run(razon_social, cuit, calificacion, consumos_tipicos, demora_promedio_pago, plazo_de_pago);
+    const info = stmt.run(
+      razon_social,
+      cuit,
+      calificacion ?? null,
+      consumos_tipicos ?? null,
+      demora_promedio_pago ?? null,
+      plazo_de_pago ?? null
+    );
     res.json({ id: info.lastInsertRowid });
   });
+
+  app.put("/api/clients/:id", (req, res) => {
+    const { razon_social, cuit, calificacion, consumos_tipicos, demora_promedio_pago, plazo_de_pago } = req.body;
+    const stmt = db.prepare(`
+      UPDATE clients 
+      SET razon_social = ?, cuit = ?, calificacion = COALESCE(?, calificacion), consumos_tipicos = COALESCE(?, consumos_tipicos), demora_promedio_pago = COALESCE(?, demora_promedio_pago), plazo_de_pago = COALESCE(?, plazo_de_pago)
+      WHERE id = ?
+    `);
+    stmt.run(
+      razon_social,
+      cuit,
+      calificacion ?? null,
+      consumos_tipicos ?? null,
+      demora_promedio_pago ?? null,
+      plazo_de_pago ?? null,
+      req.params.id
+    );
+    res.json({ success: true });
+  });
+
+  app.delete("/api/clients/:id", (req, res) => {
+    const stmt = db.prepare("DELETE FROM clients WHERE id = ?");
+    stmt.run(req.params.id);
+    res.json({ success: true });
+  });
+
 
   app.post("/api/clients/import", (req, res) => {
     const { clients } = req.body;
@@ -59,6 +92,24 @@ async function startServer() {
     const info = stmt.run(razon_social, cuit, contact_channels);
     res.json({ id: info.lastInsertRowid });
   });
+
+  app.put("/api/suppliers/:id", (req, res) => {
+    const { razon_social, cuit, contact_channels } = req.body;
+    const stmt = db.prepare(`
+      UPDATE suppliers 
+      SET razon_social = ?, cuit = ?, contact_channels = COALESCE(?, contact_channels)
+      WHERE id = ?
+    `);
+    stmt.run(razon_social, cuit, contact_channels ?? null, req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/suppliers/:id", (req, res) => {
+    const stmt = db.prepare("DELETE FROM suppliers WHERE id = ?");
+    stmt.run(req.params.id);
+    res.json({ success: true });
+  });
+
 
   app.post("/api/suppliers/import", (req, res) => {
     const { suppliers } = req.body;
@@ -318,6 +369,23 @@ async function startServer() {
   app.get("/api/products", (req, res) => {
     const products = db.prepare("SELECT * FROM products").all();
     res.json(products);
+  });
+
+  app.put("/api/products/:id", (req, res) => {
+    const { code, name, price, category } = req.body;
+    const stmt = db.prepare(`
+      UPDATE products 
+      SET code = ?, name = ?, price = COALESCE(?, price), category = COALESCE(?, category)
+      WHERE id = ?
+    `);
+    stmt.run(code, name, price ?? null, category ?? null, req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/products/:id", (req, res) => {
+    const stmt = db.prepare("DELETE FROM products WHERE id = ?");
+    stmt.run(req.params.id);
+    res.json({ success: true });
   });
 
   app.post("/api/products/import", (req, res) => {

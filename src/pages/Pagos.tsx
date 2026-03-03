@@ -22,7 +22,8 @@ interface Invoice {
 export default function Pagos() {
   const { user } = useUser();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [clients, setClients] = useState<{id: number, razon_social: string}[]>([]);
+  const [clients, setClients] = useState<{ id: number, razon_social: string, plazo_de_pago?: string }[]>([]);
+  const [invoiceTermDays, setInvoiceTermDays] = useState('0');
   const [showNewInvoiceModal, setShowNewInvoiceModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -38,6 +39,25 @@ export default function Pagos() {
       .then(data => setInvoices(data));
   };
 
+  const handleClientSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedId = parseInt(e.target.value);
+    const client = clients.find(c => c.id === selectedId);
+    if (client && client.plazo_de_pago) {
+      if (client.plazo_de_pago.toLowerCase() === 'anticipado') {
+        setInvoiceTermDays('0');
+      } else {
+        const match = client.plazo_de_pago.match(/\d+/);
+        if (match) {
+          setInvoiceTermDays(match[0]);
+        } else {
+          setInvoiceTermDays('0');
+        }
+      }
+    } else {
+      setInvoiceTermDays('0');
+    }
+  };
+
   const handleCreateInvoice = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -46,7 +66,7 @@ export default function Pagos() {
     const amount = parseFloat(formData.get('amount') as string);
     const issue_date = formData.get('issue_date') as string;
     const payment_term_days = parseInt(formData.get('payment_term_days') as string, 10);
-    
+
     const due_date = addDays(new Date(issue_date), payment_term_days).toISOString();
 
     const res = await fetch('/api/invoices', {
@@ -149,7 +169,7 @@ export default function Pagos() {
           <DollarSign className="w-6 h-6 mr-2 text-indigo-600" />
           Gestión de Pagos
         </h1>
-        <button 
+        <button
           onClick={() => setShowNewInvoiceModal(true)}
           className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center"
         >
@@ -267,7 +287,7 @@ export default function Pagos() {
             <form onSubmit={handleCreateInvoice} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
-                <select name="client_id" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" required>
+                <select name="client_id" onChange={handleClientSelect} className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" required>
                   <option value="">Seleccionar cliente...</option>
                   {clients.map(c => (
                     <option key={c.id} value={c.id}>{c.razon_social}</option>
@@ -276,9 +296,9 @@ export default function Pagos() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">N° de Factura</label>
-                <input 
-                  type="text" 
-                  name="invoice_number" 
+                <input
+                  type="text"
+                  name="invoice_number"
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="Ej: A-0001-00001234"
                   required
@@ -286,10 +306,10 @@ export default function Pagos() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monto ($)</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   step="0.01"
-                  name="amount" 
+                  name="amount"
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="0.00"
                   required
@@ -297,9 +317,9 @@ export default function Pagos() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Emisión</label>
-                <input 
-                  type="date" 
-                  name="issue_date" 
+                <input
+                  type="date"
+                  name="issue_date"
                   defaultValue={new Date().toISOString().split('T')[0]}
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   required
@@ -307,23 +327,25 @@ export default function Pagos() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de Pago (días)</label>
-                <input 
-                  type="number" 
-                  name="payment_term_days" 
+                <input
+                  type="number"
+                  name="payment_term_days"
+                  value={invoiceTermDays}
+                  onChange={(e) => setInvoiceTermDays(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                  placeholder="Ej: 30, 60, 90"
+                  placeholder="Ej: 0, 30, 60"
                   required
                 />
               </div>
               <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowNewInvoiceModal(false)}
                   className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
                 >
@@ -352,13 +374,13 @@ export default function Pagos() {
                 <p className="text-sm text-gray-600">Factura: <span className="font-medium text-gray-900">{selectedInvoice.invoice_number}</span></p>
                 <p className="text-sm text-gray-600">Monto Total: <span className="font-medium text-gray-900">${selectedInvoice.amount.toLocaleString()}</span></p>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monto Pagado ($)</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   step="0.01"
-                  name="payment_amount" 
+                  name="payment_amount"
                   defaultValue={selectedInvoice.amount}
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   required
@@ -366,19 +388,19 @@ export default function Pagos() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Pago</label>
-                <input 
-                  type="date" 
-                  name="payment_date" 
+                <input
+                  type="date"
+                  name="payment_date"
                   defaultValue={new Date().toISOString().split('T')[0]}
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   required
                 />
               </div>
               <div className="flex items-center mt-4">
-                <input 
-                  type="checkbox" 
-                  id="has_retentions" 
-                  name="has_retentions" 
+                <input
+                  type="checkbox"
+                  id="has_retentions"
+                  name="has_retentions"
                   className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                 />
                 <label htmlFor="has_retentions" className="ml-2 block text-sm text-gray-900">
@@ -386,14 +408,14 @@ export default function Pagos() {
                 </label>
               </div>
               <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowPaymentModal(false)}
                   className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
                 >

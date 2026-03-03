@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Database as DatabaseIcon, Users, Truck, Package, Upload, Plus, X, Trash2, Download } from 'lucide-react';
 import { useUser } from '../store/UserContext';
 import Papa from 'papaparse';
+import { formatCuit } from '../utils/formatters';
 
 interface ContactChannel {
   name: string;
@@ -12,17 +13,25 @@ interface ContactChannel {
 export default function Database() {
   const { isAdmin } = useUser();
   const [activeTab, setActiveTab] = useState<'clients' | 'suppliers' | 'products'>('clients');
-  
+
   const [clients, setClients] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
-  
+
   const [showModal, setShowModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form states
   const [cuit, setCuit] = useState('');
   const [contacts, setContacts] = useState<ContactChannel[]>([]);
+  const [paymentType, setPaymentType] = useState<'anticipado' | 'a_plazo'>('anticipado');
+  const [paymentDays, setPaymentDays] = useState('');
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  // Common controlled inputs
+  const [razonSocial, setRazonSocial] = useState('');
+  const [productCode, setProductCode] = useState('');
+  const [productName, setProductName] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -62,10 +71,42 @@ export default function Database() {
     setContacts(newContacts);
   };
 
+  const handleEdit = (item: any) => {
+    setEditingId(item.id);
+    if (activeTab === 'clients') {
+      setCuit((item.cuit || '').replace(/\D/g, '').slice(0, 11));
+      setRazonSocial(item.razon_social || '');
+      if (item.plazo_de_pago && item.plazo_de_pago.toLowerCase() !== 'anticipado') {
+        const match = item.plazo_de_pago.match(/\d+/);
+        setPaymentType('a_plazo');
+        setPaymentDays(match ? match[0] : '');
+      } else {
+        setPaymentType('anticipado');
+        setPaymentDays('');
+      }
+    } else if (activeTab === 'suppliers') {
+      setCuit((item.cuit || '').replace(/\D/g, '').slice(0, 11));
+      setRazonSocial(item.razon_social || '');
+      setContacts(item.contact_channels || []);
+    } else if (activeTab === 'products') {
+      setProductCode(item.code || '');
+      setProductName(item.name || '');
+    }
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar este registro?')) return;
+    const res = await fetch(`/api/${activeTab}/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      fetchData();
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
+
     let endpoint = '';
     let body: any = {};
 
@@ -74,11 +115,12 @@ export default function Database() {
         alert('El CUIT debe tener exactamente 11 dígitos numéricos.');
         return;
       }
+      const finalPlazo = paymentType === 'anticipado' ? 'Anticipado' : paymentDays;
       endpoint = '/api/clients';
       body = {
-        razon_social: formData.get('razon_social'),
+        razon_social: razonSocial,
         cuit: cuit,
-        plazo_de_pago: formData.get('plazo_de_pago')
+        plazo_de_pago: finalPlazo
       };
     } else if (activeTab === 'suppliers') {
       if (cuit.length !== 11) {
@@ -87,30 +129,43 @@ export default function Database() {
       }
       endpoint = '/api/suppliers';
       body = {
-        razon_social: formData.get('razon_social'),
+        razon_social: razonSocial,
         cuit: cuit,
         contact_channels: JSON.stringify(contacts)
       };
     } else if (activeTab === 'products') {
-      endpoint = '/api/products/import'; // Using import endpoint for single insert as well since it handles conflicts
-      body = {
+      endpoint = editingId ? `/api/products/${editingId}` : '/api/products/import';
+      body = editingId ? {
+        code: productCode,
+        name: productName
+      } : {
         products: [{
-          code: formData.get('code'),
-          name: formData.get('name')
+          code: productCode,
+          name: productName
         }]
       };
     }
 
+    if (editingId && activeTab !== 'products') {
+      endpoint = `${endpoint}/${editingId}`;
+    }
+
     const res = await fetch(endpoint, {
-      method: 'POST',
+      method: editingId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
 
     if (res.ok) {
       setShowModal(false);
+      setEditingId(null);
       setCuit('');
+      setRazonSocial('');
+      setProductCode('');
+      setProductName('');
       setContacts([]);
+      setPaymentType('anticipado');
+      setPaymentDays('');
       fetchData();
     }
   };
@@ -166,7 +221,7 @@ export default function Database() {
         } else {
           alert('Error al importar los datos.');
         }
-        
+
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
@@ -203,27 +258,33 @@ export default function Database() {
           <DatabaseIcon className="w-6 h-6 mr-2 text-indigo-600" />
           Base de Datos
         </h1>
-        
+
         {isAdmin && (
           <div className="flex gap-3">
-            <input 
-              type="file" 
-              accept=".csv" 
-              className="hidden" 
+            <input
+              type="file"
+              accept=".csv"
+              className="hidden"
               ref={fileInputRef}
               onChange={handleFileUpload}
             />
-            <button 
+            <button
               onClick={() => fileInputRef.current?.click()}
               className="bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center"
             >
               <Upload className="w-5 h-5 mr-2" />
               Importar CSV
             </button>
-            <button 
+            <button
               onClick={() => {
+                setEditingId(null);
                 setCuit('');
+                setRazonSocial('');
+                setProductCode('');
+                setProductName('');
                 setContacts([]);
+                setPaymentType('anticipado');
+                setPaymentDays('');
                 setShowModal(true);
               }}
               className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center"
@@ -238,25 +299,22 @@ export default function Database() {
       <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 p-1 w-fit">
         <button
           onClick={() => setActiveTab('clients')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${
-            activeTab === 'clients' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-          }`}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${activeTab === 'clients' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
         >
           <Users className="w-4 h-4 mr-2" /> Clientes
         </button>
         <button
           onClick={() => setActiveTab('suppliers')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${
-            activeTab === 'suppliers' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-          }`}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${activeTab === 'suppliers' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
         >
           <Truck className="w-4 h-4 mr-2" /> Proveedores
         </button>
         <button
           onClick={() => setActiveTab('products')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${
-            activeTab === 'products' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-          }`}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${activeTab === 'products' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
         >
           <Package className="w-4 h-4 mr-2" /> Productos
         </button>
@@ -271,7 +329,7 @@ export default function Database() {
               {activeTab === 'suppliers' && "Columnas: razon_social, cuit, contact_channels. contact_channels debe ser un JSON válido o vacío."}
               {activeTab === 'products' && "Columnas: codigo, presentacion."}
             </p>
-            <button 
+            <button
               onClick={downloadTemplate}
               className="text-sm text-blue-700 font-medium hover:text-blue-900 flex items-center"
             >
@@ -291,6 +349,7 @@ export default function Database() {
                     <th className="px-6 py-4 font-semibold">Razón Social</th>
                     <th className="px-6 py-4 font-semibold">CUIT</th>
                     <th className="px-6 py-4 font-semibold">Plazo de Pago</th>
+                    {isAdmin && <th className="px-6 py-4 font-semibold text-right">Acciones</th>}
                   </>
                 )}
                 {activeTab === 'suppliers' && (
@@ -298,12 +357,14 @@ export default function Database() {
                     <th className="px-6 py-4 font-semibold">Razón Social</th>
                     <th className="px-6 py-4 font-semibold">CUIT</th>
                     <th className="px-6 py-4 font-semibold">Contactos</th>
+                    {isAdmin && <th className="px-6 py-4 font-semibold text-right">Acciones</th>}
                   </>
                 )}
                 {activeTab === 'products' && (
                   <>
                     <th className="px-6 py-4 font-semibold">Código</th>
                     <th className="px-6 py-4 font-semibold">Presentación</th>
+                    {isAdmin && <th className="px-6 py-4 font-semibold text-right">Acciones</th>}
                   </>
                 )}
               </tr>
@@ -312,14 +373,20 @@ export default function Database() {
               {activeTab === 'clients' && clients.map((client) => (
                 <tr key={client.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{client.razon_social}</td>
-                  <td className="px-6 py-4">{client.cuit}</td>
+                  <td className="px-6 py-4">{formatCuit(client.cuit)}</td>
                   <td className="px-6 py-4">{client.plazo_de_pago || '-'}</td>
+                  {isAdmin && (
+                    <td className="px-6 py-4 text-right">
+                      <button onClick={() => handleEdit(client)} className="text-indigo-600 hover:text-indigo-900 mx-2 text-sm font-medium">Editar</button>
+                      <button onClick={() => handleDelete(client.id)} className="text-red-600 hover:text-red-900 text-sm font-medium">Borrar</button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {activeTab === 'suppliers' && suppliers.map((supplier) => (
                 <tr key={supplier.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{supplier.razon_social}</td>
-                  <td className="px-6 py-4">{supplier.cuit}</td>
+                  <td className="px-6 py-4">{formatCuit(supplier.cuit)}</td>
                   <td className="px-6 py-4">
                     {supplier.contact_channels?.length > 0 ? (
                       <ul className="space-y-1">
@@ -331,12 +398,24 @@ export default function Database() {
                       </ul>
                     ) : '-'}
                   </td>
+                  {isAdmin && (
+                    <td className="px-6 py-4 text-right">
+                      <button onClick={() => handleEdit(supplier)} className="text-indigo-600 hover:text-indigo-900 mx-2 text-sm font-medium">Editar</button>
+                      <button onClick={() => handleDelete(supplier.id)} className="text-red-600 hover:text-red-900 text-sm font-medium">Borrar</button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {activeTab === 'products' && products.map((product) => (
                 <tr key={product.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{product.code}</td>
                   <td className="px-6 py-4">{product.name}</td>
+                  {isAdmin && (
+                    <td className="px-6 py-4 text-right">
+                      <button onClick={() => handleEdit(product)} className="text-indigo-600 hover:text-indigo-900 mx-2 text-sm font-medium">Editar</button>
+                      <button onClick={() => handleDelete(product.id)} className="text-red-600 hover:text-red-900 text-sm font-medium">Borrar</button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -350,36 +429,88 @@ export default function Database() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center shrink-0">
               <h3 className="text-lg font-bold text-gray-900">
-                Nuevo {activeTab === 'clients' ? 'Cliente' : activeTab === 'suppliers' ? 'Proveedor' : 'Producto'}
+                {editingId ? 'Editar' : 'Nuevo'} {activeTab === 'clients' ? 'Cliente' : activeTab === 'suppliers' ? 'Proveedor' : 'Producto'}
               </h3>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingId(null);
+                  setRazonSocial('');
+                  setProductCode('');
+                  setProductName('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
-            <div className="overflow-y-auto p-6">
-              <form id="add-form" onSubmit={handleSubmit} className="space-y-4">
+
+            <form id="add-form" onSubmit={handleSubmit} className="flex flex-col min-h-0">
+              <div className="overflow-y-auto p-6 space-y-4">
                 {activeTab === 'clients' && (
                   <>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Razón Social</label>
-                      <input type="text" name="razon_social" required className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                      <input
+                        type="text"
+                        name="razon_social"
+                        value={razonSocial}
+                        onChange={e => setRazonSocial(e.target.value)}
+                        required
+                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">N° de CUIT (11 dígitos)</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={cuit}
                         onChange={handleCuitChange}
                         placeholder="Ej: 30123456789"
-                        required 
-                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        required
+                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       />
                       <p className="text-xs text-gray-500 mt-1">{cuit.length}/11 dígitos</p>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de Pago</label>
-                      <input type="text" name="plazo_de_pago" placeholder="Ej: Anticipado, Contado, 30 días" required className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Plazo de Pago</label>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="payment_type"
+                            checked={paymentType === 'anticipado'}
+                            onChange={() => setPaymentType('anticipado')}
+                            className="text-indigo-600 focus:ring-indigo-500"
+                          />
+                          Anticipado
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="payment_type"
+                            checked={paymentType === 'a_plazo'}
+                            onChange={() => setPaymentType('a_plazo')}
+                            className="text-indigo-600 focus:ring-indigo-500"
+                          />
+                          A Plazo
+                        </label>
+                      </div>
+
+                      {paymentType === 'a_plazo' && (
+                        <div className="mt-3">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad de días</label>
+                          <input
+                            type="number"
+                            value={paymentDays}
+                            onChange={(e) => setPaymentDays(e.target.value)}
+                            placeholder="Ej: 17"
+                            required
+                            min="1"
+                            className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                          />
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -388,21 +519,28 @@ export default function Database() {
                   <>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Razón Social</label>
-                      <input type="text" name="razon_social" required className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                      <input
+                        type="text"
+                        name="razon_social"
+                        value={razonSocial}
+                        onChange={e => setRazonSocial(e.target.value)}
+                        required
+                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">N° de CUIT (11 dígitos)</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={cuit}
                         onChange={handleCuitChange}
                         placeholder="Ej: 30123456789"
-                        required 
-                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        required
+                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       />
                       <p className="text-xs text-gray-500 mt-1">{cuit.length}/11 dígitos</p>
                     </div>
-                    
+
                     <div className="pt-2">
                       <div className="flex justify-between items-center mb-2">
                         <label className="block text-sm font-medium text-gray-700">Canales de Contacto (Opcional)</label>
@@ -410,38 +548,38 @@ export default function Database() {
                           <Plus className="w-4 h-4 mr-1" /> Agregar
                         </button>
                       </div>
-                      
+
                       <div className="space-y-3">
                         {contacts.map((contact, index) => (
                           <div key={index} className="bg-gray-50 p-3 rounded-lg border border-gray-200 relative">
-                            <button 
-                              type="button" 
+                            <button
+                              type="button"
                               onClick={() => handleRemoveContact(index)}
                               className="absolute top-2 right-2 text-gray-400 hover:text-red-500"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
                             <div className="space-y-2 pr-6">
-                              <input 
-                                type="text" 
-                                placeholder="Nombre" 
+                              <input
+                                type="text"
+                                placeholder="Nombre"
                                 value={contact.name}
                                 onChange={(e) => handleContactChange(index, 'name', e.target.value)}
-                                className="w-full border border-gray-300 rounded p-1.5 text-sm" 
+                                className="w-full border border-gray-300 rounded p-1.5 text-sm"
                               />
-                              <input 
-                                type="text" 
-                                placeholder="Teléfono" 
+                              <input
+                                type="text"
+                                placeholder="Teléfono"
                                 value={contact.phone}
                                 onChange={(e) => handleContactChange(index, 'phone', e.target.value)}
-                                className="w-full border border-gray-300 rounded p-1.5 text-sm" 
+                                className="w-full border border-gray-300 rounded p-1.5 text-sm"
                               />
-                              <input 
-                                type="email" 
-                                placeholder="Correo electrónico" 
+                              <input
+                                type="email"
+                                placeholder="Correo electrónico"
                                 value={contact.email}
                                 onChange={(e) => handleContactChange(index, 'email', e.target.value)}
-                                className="w-full border border-gray-300 rounded p-1.5 text-sm" 
+                                className="w-full border border-gray-300 rounded p-1.5 text-sm"
                               />
                             </div>
                           </div>
@@ -455,33 +593,52 @@ export default function Database() {
                   <>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
-                      <input type="text" name="code" required className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                      <input
+                        type="text"
+                        name="code"
+                        value={productCode}
+                        onChange={e => setProductCode(e.target.value)}
+                        required
+                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Presentación</label>
-                      <input type="text" name="name" required className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                      <input
+                        type="text"
+                        name="name"
+                        value={productName}
+                        onChange={e => setProductName(e.target.value)}
+                        required
+                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
                     </div>
                   </>
                 )}
-              </form>
-            </div>
-            
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3 shrink-0">
-              <button 
-                type="button" 
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="submit"
-                form="add-form"
-                className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                Guardar
-              </button>
-            </div>
+              </div>
+
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingId(null);
+                    setRazonSocial('');
+                    setProductCode('');
+                    setProductName('');
+                  }}
+                  className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  Guardar
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
