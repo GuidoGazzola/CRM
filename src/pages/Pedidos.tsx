@@ -27,9 +27,9 @@ export default function Pedidos() {
   const [clientOrders, setClientOrders] = useState<ClientOrder[]>([]);
   const [showNewClientOrderModal, setShowNewClientOrderModal] = useState(false);
   const [showNewSupplierOrderModal, setShowNewSupplierOrderModal] = useState(false);
-  const [clients, setClients] = useState<{id: number, razon_social: string}[]>([]);
-  const [suppliers, setSuppliers] = useState<{id: number, razon_social: string}[]>([]);
-  const [productsList, setProductsList] = useState<{id: number, code: string, name: string}[]>([]);
+  const [clients, setClients] = useState<{ id: number, razon_social: string }[]>([]);
+  const [suppliers, setSuppliers] = useState<{ id: number, razon_social: string }[]>([]);
+  const [productsList, setProductsList] = useState<{ id: number, code: string, name: string }[]>([]);
 
   useEffect(() => {
     fetchSupplierOrders();
@@ -58,15 +58,6 @@ export default function Pedidos() {
       body: JSON.stringify({ status: 'received', receive_date: new Date().toISOString() })
     });
     if (res.ok) fetchSupplierOrders();
-  };
-
-  const handleDispatchClientOrder = async (id: number) => {
-    const res = await fetch(`/api/orders/client/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'dispatched' })
-    });
-    if (res.ok) fetchClientOrders();
   };
 
   const handleCreateClientOrder = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -126,25 +117,23 @@ export default function Pedidos() {
           <Package className="w-6 h-6 mr-2 text-indigo-600" />
           Gestión de Pedidos
         </h1>
-        
+
         <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 p-1">
           <button
             onClick={() => setActiveTab('supplier')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              activeTab === 'supplier'
-                ? 'bg-indigo-50 text-indigo-700'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'supplier'
+              ? 'bg-indigo-50 text-indigo-700'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
           >
             A Proveedores
           </button>
           <button
             onClick={() => setActiveTab('client')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              activeTab === 'client'
-                ? 'bg-indigo-50 text-indigo-700'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'client'
+              ? 'bg-indigo-50 text-indigo-700'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
           >
             De Clientes
           </button>
@@ -153,7 +142,7 @@ export default function Pedidos() {
 
       {activeTab === 'supplier' && (
         <div className="flex justify-end">
-          <button 
+          <button
             onClick={() => setShowNewSupplierOrderModal(true)}
             className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center"
           >
@@ -164,7 +153,7 @@ export default function Pedidos() {
 
       {activeTab === 'client' && (
         <div className="flex justify-end">
-          <button 
+          <button
             onClick={() => setShowNewClientOrderModal(true)}
             className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center"
           >
@@ -290,24 +279,15 @@ export default function Pedidos() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {order.status === 'pending' ? (
+                        {order.status === 'pending' && (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                             <Clock className="w-3 h-3 mr-1" /> Pendiente
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            <Truck className="w-3 h-3 mr-1" /> Despachado
                           </span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
                         {order.status === 'pending' && (
-                          <button
-                            onClick={() => handleDispatchClientOrder(order.id)}
-                            className="text-indigo-600 hover:text-indigo-900 font-medium text-sm bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
-                          >
-                            Marcar Despachado
-                          </button>
+                          <span className="text-sm text-gray-400">Gestionar desde Tareas</span>
                         )}
                       </td>
                     </tr>
@@ -343,9 +323,9 @@ export default function Pedidos() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Productos</label>
-                <input 
-                  type="text" 
-                  name="products" 
+                <input
+                  type="text"
+                  name="products"
                   list="products-list"
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="Seleccionar o escribir producto..."
@@ -359,22 +339,22 @@ export default function Pedidos() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Transporte (opcional)</label>
-                <input 
-                  type="text" 
-                  name="transport" 
+                <input
+                  type="text"
+                  name="transport"
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="Ej: Andreani, OCA..."
                 />
               </div>
               <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowNewSupplierOrderModal(false)}
                   className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
                 >
@@ -410,9 +390,9 @@ export default function Pedidos() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Productos</label>
-                <input 
-                  type="text" 
-                  name="products" 
+                <input
+                  type="text"
+                  name="products"
                   list="products-list"
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="Seleccionar o escribir producto..."
@@ -421,23 +401,23 @@ export default function Pedidos() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">N° de Presupuesto (opcional)</label>
-                <input 
-                  type="text" 
-                  name="presupuesto_ref" 
+                <input
+                  type="text"
+                  name="presupuesto_ref"
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="Ej: P-0001"
                 />
                 <p className="text-xs text-gray-500 mt-1">Si ingresa el número de presupuesto, se cancelará el recordatorio automático.</p>
               </div>
               <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowNewClientOrderModal(false)}
                   className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
                 >

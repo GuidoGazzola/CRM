@@ -33,7 +33,7 @@ export default function Clientes() {
   const [interactionType, setInteractionType] = useState('visita');
   const [filterType, setFilterType] = useState('all');
   const [filterTime, setFilterTime] = useState('all');
-  const [productsList, setProductsList] = useState<{id: number, code: string, name: string}[]>([]);
+  const [productsList, setProductsList] = useState<{ id: number, code: string, name: string }[]>([]);
 
   useEffect(() => {
     fetch('/api/clients')
@@ -54,7 +54,7 @@ export default function Clientes() {
     }
   }, [selectedClient]);
 
-  const filteredClients = clients.filter(c => 
+  const filteredClients = clients.filter(c =>
     c.razon_social.toLowerCase().includes(search.toLowerCase()) ||
     c.cuit.includes(search)
   );
@@ -80,10 +80,6 @@ export default function Clientes() {
       description = formData.get('description') as string;
       const prods = formData.get('products') as string;
       if (prods) products = JSON.stringify([{ name: prods, qty: 1 }]);
-    } else if (type === 'entrega') {
-      const remito = formData.get('remito') as string;
-      const recibio = formData.get('recibio') as string;
-      description = `Remito: ${remito}${recibio ? ` - Recibió: ${recibio}` : ''}`;
     } else if (type === 'presupuesto') {
       const desc = formData.get('description') as string;
       const solicitante = formData.get('solicitante') as string;
@@ -138,18 +134,18 @@ export default function Clientes() {
 
   const filteredInteractions = interactions.filter(interaction => {
     if (filterType !== 'all' && interaction.type !== filterType) return false;
-    
+
     if (filterTime !== 'all') {
       const interactionDate = new Date(interaction.date);
       const now = new Date();
       const diffTime = Math.abs(now.getTime() - interactionDate.getTime());
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
+
       if (filterTime === '7days' && diffDays > 7) return false;
       if (filterTime === '30days' && diffDays > 30) return false;
       if (filterTime === '90days' && diffDays > 90) return false;
     }
-    
+
     return true;
   });
 
@@ -174,9 +170,8 @@ export default function Clientes() {
             <button
               key={client.id}
               onClick={() => setSelectedClient(client)}
-              className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors flex items-center justify-between ${
-                selectedClient?.id === client.id ? 'bg-indigo-50 border-l-4 border-l-indigo-500' : ''
-              }`}
+              className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors flex items-center justify-between ${selectedClient?.id === client.id ? 'bg-indigo-50 border-l-4 border-l-indigo-500' : ''
+                }`}
             >
               <div>
                 <h3 className="font-semibold text-gray-900">{client.razon_social}</h3>
@@ -193,7 +188,7 @@ export default function Clientes() {
         <div className="flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="p-6 border-b border-gray-200 bg-gray-50 flex justify-between items-start">
             <div>
-              <button 
+              <button
                 className="md:hidden text-indigo-600 text-sm font-medium mb-2 flex items-center"
                 onClick={() => setSelectedClient(null)}
               >
@@ -202,7 +197,7 @@ export default function Clientes() {
               <h2 className="text-2xl font-bold text-gray-900">{selectedClient.razon_social}</h2>
               <p className="text-gray-500">CUIT: {selectedClient.cuit}</p>
             </div>
-            <button 
+            <button
               onClick={() => setShowInteractionModal(true)}
               className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center"
             >
@@ -249,7 +244,7 @@ export default function Clientes() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 pb-2 border-b border-gray-200 gap-4">
               <h3 className="text-lg font-bold text-gray-900">Historial de Interacciones</h3>
               <div className="flex gap-2">
-                <select 
+                <select
                   className="text-sm border border-gray-300 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500 outline-none"
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value)}
@@ -260,7 +255,7 @@ export default function Clientes() {
                   <option value="presupuesto">Presupuestos</option>
                   <option value="prueba">Pruebas</option>
                 </select>
-                <select 
+                <select
                   className="text-sm border border-gray-300 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500 outline-none"
                   value={filterTime}
                   onChange={(e) => setFilterTime(e.target.value)}
@@ -333,15 +328,14 @@ export default function Clientes() {
             <form onSubmit={handleAddInteraction} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-                <select 
-                  name="type" 
-                  className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                <select
+                  name="type"
+                  className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   value={interactionType}
                   onChange={(e) => setInteractionType(e.target.value)}
                   required
                 >
                   <option value="visita">Informe de visita</option>
-                  <option value="entrega">Entrega</option>
                   <option value="presupuesto">Solicitud de presupuesto</option>
                   <option value="prueba">Solicitud de prueba de producto</option>
                 </select>
@@ -351,9 +345,9 @@ export default function Clientes() {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-                    <textarea 
-                      name="description" 
-                      rows={3} 
+                    <textarea
+                      name="description"
+                      rows={3}
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       placeholder="Detalles de la visita..."
                       required
@@ -361,9 +355,9 @@ export default function Clientes() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Productos (opcional)</label>
-                    <input 
-                      type="text" 
-                      name="products" 
+                    <input
+                      type="text"
+                      name="products"
                       list="products-list"
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       placeholder="Seleccionar o escribir producto..."
@@ -377,37 +371,13 @@ export default function Clientes() {
                 </>
               )}
 
-              {interactionType === 'entrega' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Número de remito</label>
-                    <input 
-                      type="text" 
-                      name="remito" 
-                      className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                      placeholder="Ej: R-0001-00001234"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Persona que recibió (opcional)</label>
-                    <input 
-                      type="text" 
-                      name="recibio" 
-                      className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                      placeholder="Nombre de quien recibe"
-                    />
-                  </div>
-                </>
-              )}
-
               {interactionType === 'presupuesto' && (
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Descripción / Detalle</label>
-                    <textarea 
-                      name="description" 
-                      rows={3} 
+                    <textarea
+                      name="description"
+                      rows={3}
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       placeholder="Detalles del presupuesto..."
                       required
@@ -415,9 +385,9 @@ export default function Clientes() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Solicitante / Destinatario</label>
-                    <input 
-                      type="text" 
-                      name="solicitante" 
+                    <input
+                      type="text"
+                      name="solicitante"
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       placeholder="Nombre del solicitante"
                       required
@@ -430,9 +400,9 @@ export default function Clientes() {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Descripción / Detalle</label>
-                    <textarea 
-                      name="description" 
-                      rows={3} 
+                    <textarea
+                      name="description"
+                      rows={3}
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       placeholder="Detalles de la prueba..."
                       required
@@ -440,9 +410,9 @@ export default function Clientes() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Responsable de la prueba</label>
-                    <input 
-                      type="text" 
-                      name="responsable" 
+                    <input
+                      type="text"
+                      name="responsable"
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       placeholder="Nombre del responsable"
                       required
@@ -452,14 +422,14 @@ export default function Clientes() {
               )}
 
               <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowInteractionModal(false)}
                   className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
                 >

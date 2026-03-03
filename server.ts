@@ -9,7 +9,7 @@ async function startServer() {
   app.use(express.json());
 
   // API Routes
-  
+
   // -- Clients --
   app.get("/api/clients", (req, res) => {
     const clients = db.prepare("SELECT * FROM clients").all();
@@ -33,13 +33,13 @@ async function startServer() {
       VALUES (?, ?, ?)
       ON CONFLICT(cuit) DO UPDATE SET razon_social=excluded.razon_social, plazo_de_pago=excluded.plazo_de_pago
     `);
-    
+
     const insertMany = db.transaction((cls) => {
       for (const c of cls) {
         stmt.run(c.razon_social, c.cuit, c.plazo_de_pago);
       }
     });
-    
+
     insertMany(clients);
     res.json({ success: true });
   });
@@ -67,13 +67,13 @@ async function startServer() {
       VALUES (?, ?, ?)
       ON CONFLICT(cuit) DO UPDATE SET razon_social=excluded.razon_social, contact_channels=excluded.contact_channels
     `);
-    
+
     const insertMany = db.transaction((sups) => {
       for (const s of sups) {
         stmt.run(s.razon_social, s.cuit, s.contact_channels);
       }
     });
-    
+
     insertMany(suppliers);
     res.json({ success: true });
   });
@@ -122,7 +122,7 @@ async function startServer() {
 
   app.put("/api/tasks/:id", (req, res) => {
     const { status, completed_by, result, reminder_date, reminder_status } = req.body;
-    
+
     if (status === 'pending' || status === 'approved') {
       const stmt = db.prepare(`
         UPDATE tasks SET status = ?, completed_by = NULL, completed_at = NULL, result = NULL, reminder_date = NULL, reminder_status = NULL
@@ -182,7 +182,7 @@ async function startServer() {
       VALUES (?, ?, ?, ?, ?)
     `);
     const info = stmt.run(client_id, products, order_date, status || 'pending', presupuesto_ref);
-    
+
     if (presupuesto_ref) {
       const cancelStmt = db.prepare(`
         UPDATE tasks SET reminder_status = 'cancelled' 
@@ -190,17 +190,16 @@ async function startServer() {
       `);
       cancelStmt.run(presupuesto_ref, client_id);
     }
-    
+
     res.json({ id: info.lastInsertRowid });
   });
 
-  app.put("/api/orders/client/:id", (req, res) => {
-    const { status } = req.body;
+  app.delete("/api/orders/client/:id", (req, res) => {
     const stmt = db.prepare(`
-      UPDATE client_orders SET status = ?
+      DELETE FROM client_orders
       WHERE id = ?
     `);
-    stmt.run(status, req.params.id);
+    stmt.run(req.params.id);
     res.json({ success: true });
   });
 
@@ -234,13 +233,13 @@ async function startServer() {
       WHERE id = ?
     `);
     stmt.run(status, payment_date, payment_amount, has_retentions ? 1 : 0, req.params.id);
-    
+
     // Update client delay if completed
     if (status === 'completed') {
       const invoice = db.prepare("SELECT client_id, invoice_number FROM invoices WHERE id = ?").get(req.params.id) as any;
       if (invoice) {
         updateClientPaymentDelay(invoice.client_id);
-        
+
         // Cancel reminder task
         db.prepare(`
           UPDATE tasks SET reminder_status = 'cancelled' 
@@ -248,7 +247,7 @@ async function startServer() {
         `).run(invoice.client_id, `%${invoice.invoice_number}%`);
       }
     }
-    
+
     res.json({ success: true });
   });
 
@@ -260,18 +259,18 @@ async function startServer() {
       WHERE id = ?
     `);
     stmt.run(retentions_sent_date, req.params.id);
-    
+
     const invoice = db.prepare("SELECT client_id, invoice_number FROM invoices WHERE id = ?").get(req.params.id) as any;
     if (invoice) {
       updateClientPaymentDelay(invoice.client_id);
-      
+
       // Cancel reminder task
       db.prepare(`
         UPDATE tasks SET reminder_status = 'cancelled' 
         WHERE type = 'cobranza' AND client_id = ? AND description LIKE ?
       `).run(invoice.client_id, `%${invoice.invoice_number}%`);
     }
-    
+
     res.json({ success: true });
   });
 
@@ -291,9 +290,9 @@ async function startServer() {
       if (!inv.payment_date) continue;
       const due = new Date(inv.due_date).getTime();
       const paid = new Date(inv.payment_date).getTime();
-      
+
       let delay = Math.max(0, (paid - due) / (1000 * 60 * 60 * 24));
-      
+
       if (inv.retentions_sent_date) {
         const retSent = new Date(inv.retentions_sent_date).getTime();
         delay += Math.max(0, (retSent - paid) / (1000 * 60 * 60 * 24));
@@ -328,13 +327,13 @@ async function startServer() {
       VALUES (?, ?, ?, ?)
       ON CONFLICT(code) DO UPDATE SET name=excluded.name, price=excluded.price, category=excluded.category
     `);
-    
+
     const insertMany = db.transaction((prods) => {
       for (const p of prods) {
         stmt.run(p.code, p.name, p.price, p.category);
       }
     });
-    
+
     insertMany(products);
     res.json({ success: true });
   });
