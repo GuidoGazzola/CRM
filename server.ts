@@ -197,22 +197,79 @@ async function startServer() {
   });
 
   app.post("/api/orders/supplier", (req, res) => {
-    const { supplier, products, request_date, transport, status } = req.body;
-    const stmt = db.prepare(`
-      INSERT INTO supplier_orders (supplier, products, request_date, transport, status)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    const info = stmt.run(supplier, products, request_date, transport, status || 'pending');
-    res.json({ id: info.lastInsertRowid });
+    try {
+      const { supplier, products, request_date, transport, status, oc_ref } = req.body;
+      console.log("Creating supplier order:", req.body);
+      const stmt = db.prepare(`
+        INSERT INTO supplier_orders (supplier, products, request_date, transport, status, oc_ref)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      const info = stmt.run(supplier, products, request_date, transport, status || 'pending', oc_ref || null);
+      res.json({ id: info.lastInsertRowid });
+    } catch (error) {
+      console.error("Error creating supplier order:", error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
-  app.put("/api/orders/supplier/:id", (req, res) => {
-    const { status, receive_date } = req.body;
-    const stmt = db.prepare(`
-      UPDATE supplier_orders SET status = ?, receive_date = ?
-      WHERE id = ?
-    `);
-    stmt.run(status, receive_date, req.params.id);
+  app.post("/api/orders/supplier/:id/receive", (req, res) => {
+    try {
+      const { status, receive_date, products, delivered_products, remito_ref, oc_ref } = req.body;
+      const orderId = req.params.id;
+      console.log("Receiving supplier order:", orderId, req.body);
+
+      const order = db.prepare("SELECT * FROM supplier_orders WHERE id = ?").get(orderId) as any;
+
+      if (order) {
+        if (status === 'pending') {
+          // Partial: Create a new received order
+          const insertStmt = db.prepare(`
+            INSERT INTO supplier_orders (supplier, products, request_date, transport, status, oc_ref, receive_date, remito_ref)
+            VALUES (?, ?, ?, ?, 'received', ?, ?, ?)
+          `);
+          insertStmt.run(order.supplier, delivered_products, order.request_date, order.transport, oc_ref || order.oc_ref || null, receive_date || new Date().toISOString(), remito_ref || null);
+
+          // Update original
+          const updateStmt = db.prepare("UPDATE supplier_orders SET products = ? WHERE id = ?");
+          updateStmt.run(products, orderId);
+        } else {
+          const stmt = db.prepare(`
+            UPDATE supplier_orders SET status = 'received', receive_date = ?, products = ?, remito_ref = ?, oc_ref = ?
+            WHERE id = ?
+          `);
+          stmt.run(receive_date || new Date().toISOString(), delivered_products || order.products, remito_ref || null, oc_ref || order.oc_ref || null, orderId);
+          updateSupplierDeliveryDelay(order.supplier);
+        }
+        res.json({ success: true });
+      } else {
+        res.status(404).json({ error: "Order not found" });
+      }
+    } catch (error) {
+      console.error("Error receiving supplier order:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/orders/supplier/:id/edit", (req, res) => {
+    try {
+      const { supplier, products, request_date, transport, oc_ref } = req.body;
+      console.log("Editing supplier order:", req.params.id, req.body);
+      const stmt = db.prepare(`
+        UPDATE supplier_orders 
+        SET supplier = ?, products = ?, request_date = ?, transport = ?, oc_ref = ?
+        WHERE id = ?
+      `);
+      stmt.run(supplier, products, request_date, transport || null, oc_ref || null, req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error editing supplier order:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/orders/supplier/:id", (req, res) => {
+    const stmt = db.prepare("DELETE FROM supplier_orders WHERE id = ?");
+    stmt.run(req.params.id);
     res.json({ success: true });
   });
 
@@ -227,12 +284,12 @@ async function startServer() {
   });
 
   app.post("/api/orders/client", (req, res) => {
-    const { client_id, products, order_date, status, presupuesto_ref } = req.body;
+    const { client_id, products, order_date, status, presupuesto_ref, oc_ref } = req.body;
     const stmt = db.prepare(`
-      INSERT INTO client_orders (client_id, products, order_date, status, presupuesto_ref)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO client_orders (client_id, products, order_date, status, presupuesto_ref, oc_ref)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
-    const info = stmt.run(client_id, products, order_date, status || 'pending', presupuesto_ref);
+    const info = stmt.run(client_id, products, order_date, status || 'pending', presupuesto_ref || null, oc_ref || null);
 
     if (presupuesto_ref) {
       const cancelStmt = db.prepare(`
@@ -243,6 +300,66 @@ async function startServer() {
     }
 
     res.json({ id: info.lastInsertRowid });
+  });
+
+  app.post("/api/orders/client/:id/edit", (req, res) => {
+    try {
+      const { client_id, products, order_date, presupuesto_ref, oc_ref } = req.body;
+      console.log("Editing client order:", req.params.id, req.body);
+      const stmt = db.prepare(`
+        UPDATE client_orders 
+        SET client_id = ?, products = ?, order_date = ?, presupuesto_ref = ?, oc_ref = ?
+        WHERE id = ?
+      `);
+      stmt.run(client_id ? Number(client_id) : null, products, order_date, presupuesto_ref || null, oc_ref || null, req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error editing client order:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/orders/client/:id/dispatch", (req, res) => {
+    try {
+      const { user, status, dispatch_date, products, delivered_products, description, remito_ref, oc_ref } = req.body;
+      console.log("Dispatching client order:", req.params.id, req.body);
+
+      // First update the order
+      const stmt = db.prepare("UPDATE client_orders SET status = ?, products = ?, remito_ref = ?, oc_ref = ? WHERE id = ?");
+      stmt.run(status, products, remito_ref || null, oc_ref || null, req.params.id);
+
+      // Get order details to save the interaction
+      const order = db.prepare(`
+        SELECT o.*, c.razon_social as client_name 
+        FROM client_orders o 
+        JOIN clients c ON o.client_id = c.id 
+        WHERE o.id = ?
+      `).get(req.params.id) as any;
+
+      if (order) {
+        const interactionStmt = db.prepare(`
+          INSERT INTO interactions (client_id, type, date, user, description, products)
+          VALUES (?, 'entrega', ?, ?, ?, ?)
+        `);
+
+        let fullDescription = description || `Entrega de pedido #${order.id}`;
+        if (order.oc_ref) fullDescription += ` | OC: ${order.oc_ref}`;
+        if (remito_ref) fullDescription += ` | Remito: ${remito_ref}`;
+
+        interactionStmt.run(
+          order.client_id,
+          dispatch_date || new Date().toISOString(),
+          user || 'Admin',
+          fullDescription,
+          delivered_products || order.products
+        );
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error dispatching client order:", error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
   app.delete("/api/orders/client/:id", (req, res) => {
@@ -365,6 +482,39 @@ async function startServer() {
     }
   }
 
+  function updateSupplierDeliveryDelay(supplier: string) {
+    const orders = db.prepare(`
+      SELECT request_date, receive_date 
+      FROM supplier_orders 
+      WHERE supplier = ? AND status = 'received' AND receive_date IS NOT NULL
+    `).all(supplier) as any[];
+
+    if (orders.length === 0) return;
+
+    let totalDelay = 0;
+    let count = 0;
+
+    for (const ord of orders) {
+      const request = new Date(ord.request_date).getTime();
+      const receive = new Date(ord.receive_date).getTime();
+
+      let delay = Math.max(0, (receive - request) / (1000 * 60 * 60 * 24));
+      totalDelay += delay;
+      count++;
+    }
+
+    if (count > 0) {
+      const avgDelay = Math.round(totalDelay / count);
+      let calificacion = 'Excelente';
+      if (avgDelay > 0 && avgDelay <= 7) calificacion = 'Bueno';
+      else if (avgDelay > 7 && avgDelay <= 15) calificacion = 'Regular';
+      else if (avgDelay > 15) calificacion = 'Malo';
+
+      db.prepare(`UPDATE suppliers SET demora_promedio_entrega = ?, calificacion = ? WHERE razon_social = ?`)
+        .run(`${avgDelay} días`, calificacion, supplier);
+    }
+  }
+
   // -- Products Catalog --
   app.get("/api/products", (req, res) => {
     const products = db.prepare("SELECT * FROM products").all();
@@ -404,6 +554,51 @@ async function startServer() {
 
     insertMany(products);
     res.json({ success: true });
+  });
+
+  // -- Dashboard --
+  app.get("/api/dashboard", (req, res) => {
+    // Stats
+    const presupuestos = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE type = 'presupuesto'").get() as any;
+    const entregas = db.prepare("SELECT COUNT(*) as count FROM interactions WHERE type = 'entrega'").get() as any;
+    const visitas = db.prepare("SELECT COUNT(*) as count FROM interactions WHERE type = 'visita'").get() as any;
+
+    // Financials
+    const facturadoResult = db.prepare("SELECT SUM(amount) as total FROM invoices").get() as any;
+    const facturadoArs = facturadoResult.total || 0;
+    const facturadoUsd = facturadoArs / 1000;
+
+    // Mock presupuestado as 1.5x facturado since products prices might not be available
+    const presupuestadoArs = facturadoArs * 1.5;
+    const presupuestadoUsd = presupuestadoArs / 1000;
+
+    // Chart Data
+    const getChartData = (type: string, table: string) => {
+      let query = "";
+      if (table === "tasks") {
+        query = `SELECT c.razon_social as name, COUNT(*) as value FROM tasks t JOIN clients c ON t.client_id = c.id WHERE t.type = ? GROUP BY c.id ORDER BY value DESC LIMIT 5`;
+      } else {
+        query = `SELECT c.razon_social as name, COUNT(*) as value FROM interactions i JOIN clients c ON i.client_id = c.id WHERE i.type = ? GROUP BY c.id ORDER BY value DESC LIMIT 5`;
+      }
+      return db.prepare(query).all(type);
+    };
+
+    res.json({
+      stats: {
+        presupuestos: presupuestos.count,
+        entregas: entregas.count,
+        visitas: visitas.count
+      },
+      financials: {
+        presupuestado: { usd: presupuestadoUsd, ars: presupuestadoArs },
+        facturado: { usd: facturadoUsd, ars: facturadoArs }
+      },
+      chartData: {
+        presupuestos: getChartData('presupuesto', 'tasks'),
+        entregas: getChartData('entrega', 'interactions'),
+        visitas: getChartData('visita', 'interactions')
+      }
+    });
   });
 
   // Vite middleware for development

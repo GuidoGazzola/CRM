@@ -10,37 +10,19 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState<Timeframe>('Mes');
   const [selectedMetric, setSelectedMetric] = useState<'presupuestos' | 'entregas' | 'visitas'>('entregas');
 
-  // Mock data for the dashboard
-  const stats = {
-    presupuestos: 45,
-    entregas: 120,
-    visitas: 85,
-  };
+  const [dashboardData, setDashboardData] = useState<any>(null);
 
-  const financials = {
-    presupuestado: { usd: 45000, ars: 45000000 },
-    facturado: { usd: 32000, ars: 32000000 },
-  };
-
-  const chartData = {
-    presupuestos: [
-      { name: 'Tech Solutions S.A.', value: 40 },
-      { name: 'Comercial del Sur SRL', value: 35 },
-      { name: 'Industrias Metalurgicas', value: 25 },
-    ],
-    entregas: [
-      { name: 'Tech Solutions S.A.', value: 45 },
-      { name: 'Comercial del Sur SRL', value: 30 },
-      { name: 'Industrias Metalurgicas', value: 25 },
-    ],
-    visitas: [
-      { name: 'Tech Solutions S.A.', value: 50 },
-      { name: 'Comercial del Sur SRL', value: 20 },
-      { name: 'Industrias Metalurgicas', value: 30 },
-    ],
-  };
+  useEffect(() => {
+    fetch('/api/dashboard')
+      .then(res => res.json())
+      .then(data => setDashboardData(data));
+  }, []);
 
   const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+
+  if (!dashboardData) return <div className="p-4">Cargando estadísticas...</div>;
+
+  const { stats, financials, chartData } = dashboardData;
 
   return (
     <div className="space-y-6">
@@ -51,11 +33,10 @@ export default function Home() {
             <button
               key={t}
               onClick={() => setTimeframe(t)}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                timeframe === t
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${timeframe === t
                   ? 'bg-indigo-50 text-indigo-700'
                   : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
+                }`}
             >
               {t}
             </button>
@@ -105,9 +86,8 @@ export default function Home() {
         <div className="space-y-4">
           <button
             onClick={() => setSelectedMetric('presupuestos')}
-            className={`w-full text-left bg-white rounded-xl shadow-sm border p-6 transition-all ${
-              selectedMetric === 'presupuestos' ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-200 hover:border-indigo-300'
-            }`}
+            className={`w-full text-left bg-white rounded-xl shadow-sm border p-6 transition-all ${selectedMetric === 'presupuestos' ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-200 hover:border-indigo-300'
+              }`}
           >
             <div className="flex items-center justify-between">
               <div>
@@ -122,9 +102,8 @@ export default function Home() {
 
           <button
             onClick={() => setSelectedMetric('entregas')}
-            className={`w-full text-left bg-white rounded-xl shadow-sm border p-6 transition-all ${
-              selectedMetric === 'entregas' ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-200 hover:border-indigo-300'
-            }`}
+            className={`w-full text-left bg-white rounded-xl shadow-sm border p-6 transition-all ${selectedMetric === 'entregas' ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-200 hover:border-indigo-300'
+              }`}
           >
             <div className="flex items-center justify-between">
               <div>
@@ -139,9 +118,8 @@ export default function Home() {
 
           <button
             onClick={() => setSelectedMetric('visitas')}
-            className={`w-full text-left bg-white rounded-xl shadow-sm border p-6 transition-all ${
-              selectedMetric === 'visitas' ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-200 hover:border-indigo-300'
-            }`}
+            className={`w-full text-left bg-white rounded-xl shadow-sm border p-6 transition-all ${selectedMetric === 'visitas' ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-200 hover:border-indigo-300'
+              }`}
           >
             <div className="flex items-center justify-between">
               <div>
@@ -176,7 +154,7 @@ export default function Home() {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip 
+                <Tooltip
                   formatter={(value: number) => [`${value}%`, 'Porcentaje']}
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />

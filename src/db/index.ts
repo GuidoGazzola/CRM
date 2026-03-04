@@ -55,7 +55,9 @@ db.exec(`
     request_date DATETIME NOT NULL,
     transport TEXT,
     status TEXT DEFAULT 'pending', -- 'pending', 'received'
-    receive_date DATETIME
+    receive_date DATETIME,
+    oc_ref TEXT,
+    remito_ref TEXT
   );
 
   CREATE TABLE IF NOT EXISTS client_orders (
@@ -65,6 +67,8 @@ db.exec(`
     order_date DATETIME NOT NULL,
     status TEXT DEFAULT 'pending', -- 'pending', 'dispatched'
     presupuesto_ref TEXT,
+    oc_ref TEXT,
+    remito_ref TEXT,
     FOREIGN KEY(client_id) REFERENCES clients(id)
   );
 
@@ -105,8 +109,23 @@ try {
 } catch (e) {
   // Column might already exist
 }
+try {
+  db.exec("ALTER TABLE suppliers ADD COLUMN calificacion TEXT;");
+  db.exec("ALTER TABLE suppliers ADD COLUMN demora_promedio_entrega TEXT;");
+} catch (e) { }
 
-// Insert some mock data if empty
+try {
+  db.exec("ALTER TABLE supplier_orders ADD COLUMN oc_ref TEXT;");
+} catch (e) { }
+try {
+  db.exec("ALTER TABLE supplier_orders ADD COLUMN remito_ref TEXT;");
+} catch (e) { }
+try {
+  db.exec("ALTER TABLE client_orders ADD COLUMN oc_ref TEXT;");
+} catch (e) { }
+try {
+  db.exec("ALTER TABLE client_orders ADD COLUMN remito_ref TEXT;");
+} catch (e) { }
 const clientCount = db.prepare("SELECT COUNT(*) as count FROM clients").get() as { count: number };
 if (clientCount.count === 0) {
   const insertClient = db.prepare("INSERT INTO clients (razon_social, cuit, calificacion, consumos_tipicos, demora_promedio_pago) VALUES (?, ?, ?, ?, ?)");

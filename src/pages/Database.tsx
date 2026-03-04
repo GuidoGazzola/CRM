@@ -27,6 +27,8 @@ export default function Database() {
   const [paymentDays, setPaymentDays] = useState('');
 
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   // Common controlled inputs
   const [razonSocial, setRazonSocial] = useState('');
@@ -74,10 +76,11 @@ export default function Database() {
   const handleEdit = (item: any) => {
     setEditingId(item.id);
     if (activeTab === 'clients') {
-      setCuit((item.cuit || '').replace(/\D/g, '').slice(0, 11));
+      setCuit(String(item.cuit || '').replace(/\D/g, '').slice(0, 11));
       setRazonSocial(item.razon_social || '');
-      if (item.plazo_de_pago && item.plazo_de_pago.toLowerCase() !== 'anticipado') {
-        const match = item.plazo_de_pago.match(/\d+/);
+      const plazo = String(item.plazo_de_pago || '');
+      if (plazo && plazo.toLowerCase() !== 'anticipado') {
+        const match = plazo.match(/\d+/);
         setPaymentType('a_plazo');
         setPaymentDays(match ? match[0] : '');
       } else {
@@ -85,9 +88,13 @@ export default function Database() {
         setPaymentDays('');
       }
     } else if (activeTab === 'suppliers') {
-      setCuit((item.cuit || '').replace(/\D/g, '').slice(0, 11));
+      setCuit(String(item.cuit || '').replace(/\D/g, '').slice(0, 11));
       setRazonSocial(item.razon_social || '');
-      setContacts(item.contact_channels || []);
+      try {
+        setContacts(typeof item.contact_channels === 'string' ? JSON.parse(item.contact_channels) : (item.contact_channels || []));
+      } catch (e) {
+        setContacts([]);
+      }
     } else if (activeTab === 'products') {
       setProductCode(item.code || '');
       setProductName(item.name || '');
@@ -95,10 +102,11 @@ export default function Database() {
     setShowModal(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('¿Estás seguro de que deseas eliminar este registro?')) return;
-    const res = await fetch(`/api/${activeTab}/${id}`, { method: 'DELETE' });
+  const handleDelete = async () => {
+    if (!deletingId) return;
+    const res = await fetch(`/api/${activeTab}/${deletingId}`, { method: 'DELETE' });
     if (res.ok) {
+      setDeletingId(null);
       fetchData();
     }
   };
@@ -177,6 +185,7 @@ export default function Database() {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+      transformHeader: (h) => h.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, '_'),
       complete: async (results) => {
         let endpoint = '';
         let body: any = {};
@@ -216,11 +225,13 @@ export default function Database() {
         });
 
         if (res.ok) {
-          alert('Datos importados correctamente.');
+          setImportMessage({ type: 'success', text: 'Datos importados correctamente.' });
           fetchData();
         } else {
-          alert('Error al importar los datos.');
+          setImportMessage({ type: 'error', text: 'Error al importar los datos.' });
         }
+
+        setTimeout(() => setImportMessage(null), 3000);
 
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -247,8 +258,11 @@ export default function Database() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = filename;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
   };
 
   return (
@@ -258,6 +272,12 @@ export default function Database() {
           <DatabaseIcon className="w-6 h-6 mr-2 text-indigo-600" />
           Base de Datos
         </h1>
+
+        {importMessage && (
+          <div className={`px-4 py-2 rounded-lg text-sm font-medium ${importMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+            {importMessage.text}
+          </div>
+        )}
 
         {isAdmin && (
           <div className="flex gap-3">
@@ -349,6 +369,7 @@ export default function Database() {
                     <th className="px-6 py-4 font-semibold">Razón Social</th>
                     <th className="px-6 py-4 font-semibold">CUIT</th>
                     <th className="px-6 py-4 font-semibold">Plazo de Pago</th>
+                    <th className="px-6 py-4 font-semibold">Calificación</th>
                     {isAdmin && <th className="px-6 py-4 font-semibold text-right">Acciones</th>}
                   </>
                 )}
@@ -357,6 +378,7 @@ export default function Database() {
                     <th className="px-6 py-4 font-semibold">Razón Social</th>
                     <th className="px-6 py-4 font-semibold">CUIT</th>
                     <th className="px-6 py-4 font-semibold">Contactos</th>
+                    <th className="px-6 py-4 font-semibold">Calificación</th>
                     {isAdmin && <th className="px-6 py-4 font-semibold text-right">Acciones</th>}
                   </>
                 )}
@@ -375,10 +397,21 @@ export default function Database() {
                   <td className="px-6 py-4 font-medium text-gray-900">{client.razon_social}</td>
                   <td className="px-6 py-4">{formatCuit(client.cuit)}</td>
                   <td className="px-6 py-4">{client.plazo_de_pago || '-'}</td>
+                  <td className="px-6 py-4">
+                    {client.calificacion ? (
+                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${client.calificacion === 'Excelente' ? 'bg-green-100 text-green-800' :
+                        client.calificacion === 'Bueno' ? 'bg-blue-100 text-blue-800' :
+                          client.calificacion === 'Regular' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                        }`}>
+                        {client.calificacion} {client.demora_promedio_pago ? `(${client.demora_promedio_pago})` : ''}
+                      </span>
+                    ) : '-'}
+                  </td>
                   {isAdmin && (
                     <td className="px-6 py-4 text-right">
                       <button onClick={() => handleEdit(client)} className="text-indigo-600 hover:text-indigo-900 mx-2 text-sm font-medium">Editar</button>
-                      <button onClick={() => handleDelete(client.id)} className="text-red-600 hover:text-red-900 text-sm font-medium">Borrar</button>
+                      <button onClick={() => setDeletingId(client.id)} className="text-red-600 hover:text-red-900 text-sm font-medium">Borrar</button>
                     </td>
                   )}
                 </tr>
@@ -398,10 +431,21 @@ export default function Database() {
                       </ul>
                     ) : '-'}
                   </td>
+                  <td className="px-6 py-4">
+                    {supplier.calificacion ? (
+                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${supplier.calificacion === 'Excelente' ? 'bg-green-100 text-green-800' :
+                        supplier.calificacion === 'Bueno' ? 'bg-blue-100 text-blue-800' :
+                          supplier.calificacion === 'Regular' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                        }`}>
+                        {supplier.calificacion} {supplier.demora_promedio_entrega ? `(${supplier.demora_promedio_entrega})` : ''}
+                      </span>
+                    ) : '-'}
+                  </td>
                   {isAdmin && (
                     <td className="px-6 py-4 text-right">
                       <button onClick={() => handleEdit(supplier)} className="text-indigo-600 hover:text-indigo-900 mx-2 text-sm font-medium">Editar</button>
-                      <button onClick={() => handleDelete(supplier.id)} className="text-red-600 hover:text-red-900 text-sm font-medium">Borrar</button>
+                      <button onClick={() => setDeletingId(supplier.id)} className="text-red-600 hover:text-red-900 text-sm font-medium">Borrar</button>
                     </td>
                   )}
                 </tr>
@@ -413,7 +457,7 @@ export default function Database() {
                   {isAdmin && (
                     <td className="px-6 py-4 text-right">
                       <button onClick={() => handleEdit(product)} className="text-indigo-600 hover:text-indigo-900 mx-2 text-sm font-medium">Editar</button>
-                      <button onClick={() => handleDelete(product.id)} className="text-red-600 hover:text-red-900 text-sm font-medium">Borrar</button>
+                      <button onClick={() => setDeletingId(product.id)} className="text-red-600 hover:text-red-900 text-sm font-medium">Borrar</button>
                     </td>
                   )}
                 </tr>
@@ -639,6 +683,32 @@ export default function Database() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-6 text-center">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">¿Eliminar registro?</h3>
+            <p className="text-sm text-gray-500 mb-6">
+              Esta acción no se puede deshacer y borrará permanentemente este registro.
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setDeletingId(null)}
+                className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Borrar
+              </button>
+            </div>
           </div>
         </div>
       )}
