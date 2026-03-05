@@ -34,6 +34,12 @@ export default function Database() {
   const [razonSocial, setRazonSocial] = useState('');
   const [productCode, setProductCode] = useState('');
   const [productName, setProductName] = useState('');
+  const [productCategory, setProductCategory] = useState<'Lubricante' | 'Limpiador' | 'Accesorio'>('Lubricante');
+  const [productSubCategory, setProductSubCategory] = useState<'Aceite' | 'Grasa' | ''>('');
+  const [productGrade, setProductGrade] = useState('');
+  const [productPresentation, setProductPresentation] = useState('');
+  const [productGrades, setProductGrades] = useState<string[]>([]);
+  const [productPresentations, setProductPresentations] = useState<string[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -98,6 +104,13 @@ export default function Database() {
     } else if (activeTab === 'products') {
       setProductCode(item.code || '');
       setProductName(item.name || '');
+      setProductCategory(item.category || 'Lubricante');
+      setProductSubCategory(item.sub_category || '');
+      setProductGrades(Array.isArray(item.grades) ? item.grades : (item.grades ? JSON.parse(item.grades) : []));
+      setProductPresentations(Array.isArray(item.presentations) ? item.presentations : (item.presentations ? JSON.parse(item.presentations) : []));
+      // For legacy/compatibility during edit sessions:
+      setProductGrade('');
+      setProductPresentation('');
     }
     setShowModal(true);
   };
@@ -143,15 +156,16 @@ export default function Database() {
       };
     } else if (activeTab === 'products') {
       endpoint = editingId ? `/api/products/${editingId}` : '/api/products/import';
-      body = editingId ? {
+      const prodBody = {
         code: productCode,
-        name: productName
-      } : {
-        products: [{
-          code: productCode,
-          name: productName
-        }]
+        name: productName,
+        category: productCategory,
+        sub_category: productCategory === 'Lubricante' ? productSubCategory : null,
+        grades: productGrades,
+        presentations: productPresentations
       };
+
+      body = editingId ? prodBody : { products: [prodBody] };
     }
 
     if (editingId && activeTab !== 'products') {
@@ -171,6 +185,12 @@ export default function Database() {
       setRazonSocial('');
       setProductCode('');
       setProductName('');
+      setProductCategory('Lubricante');
+      setProductSubCategory('');
+      setProductGrade('');
+      setProductPresentation('');
+      setProductGrades([]);
+      setProductPresentations([]);
       setContacts([]);
       setPaymentType('anticipado');
       setPaymentDays('');
@@ -213,8 +233,12 @@ export default function Database() {
           body = {
             products: results.data.map((row: any) => ({
               code: row.codigo,
-              name: row.presentacion
-            })).filter((p: any) => p.code && p.name)
+              name: row.nombre || row.presentacion, // fallback
+              category: row.categoria,
+              sub_category: row.sub_categoria,
+              grade: row.grado,
+              presentation: row.presentacion
+            })).filter((p: any) => p.code && p.presentation)
           };
         }
 
@@ -251,7 +275,7 @@ export default function Database() {
       csvContent = 'razon_social,cuit,contact_channels\nProveedor SRL,30987654321,[{"name":"Juan","phone":"11223344","email":"juan@prov.com"}]\n';
       filename = 'plantilla_proveedores.csv';
     } else if (activeTab === 'products') {
-      csvContent = 'codigo,presentacion\nPROD-01,Caja x 10 unidades\n';
+      csvContent = 'codigo,nombre,categoria,sub_categoria,grado,presentacion\n533,Limpiador Industrial,Limpiador,,,5L\n533,Limpiador Industrial,Limpiador,,,20L\nGLAS,Grasa Glas,Lubricante,Grasa,NLGI 2,18kg\n';
       filename = 'plantilla_productos.csv';
     }
 
@@ -302,6 +326,10 @@ export default function Database() {
                 setRazonSocial('');
                 setProductCode('');
                 setProductName('');
+                setProductCategory('Lubricante');
+                setProductSubCategory('');
+                setProductGrade('');
+                setProductPresentation('');
                 setContacts([]);
                 setPaymentType('anticipado');
                 setPaymentDays('');
@@ -347,7 +375,7 @@ export default function Database() {
             <p className="text-sm text-blue-600 mb-2">
               {activeTab === 'clients' && "Columnas: razon_social, cuit, plazo_de_pago. El CUIT debe tener 11 dígitos numéricos."}
               {activeTab === 'suppliers' && "Columnas: razon_social, cuit, contact_channels. contact_channels debe ser un JSON válido o vacío."}
-              {activeTab === 'products' && "Columnas: codigo, presentacion."}
+              {activeTab === 'products' && "Columnas: codigo, nombre, categoria, sub_categoria, grado, presentacion."}
             </p>
             <button
               onClick={downloadTemplate}
@@ -385,6 +413,9 @@ export default function Database() {
                 {activeTab === 'products' && (
                   <>
                     <th className="px-6 py-4 font-semibold">Código</th>
+                    <th className="px-6 py-4 font-semibold">Nombre</th>
+                    <th className="px-6 py-4 font-semibold">Categoría</th>
+                    <th className="px-6 py-4 font-semibold">Grado/Sub-cat</th>
                     <th className="px-6 py-4 font-semibold">Presentación</th>
                     {isAdmin && <th className="px-6 py-4 font-semibold text-right">Acciones</th>}
                   </>
@@ -454,6 +485,30 @@ export default function Database() {
                 <tr key={product.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{product.code}</td>
                   <td className="px-6 py-4">{product.name}</td>
+                  <td className="px-6 py-4">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                      {product.category}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    {product.category === 'Lubricante' ? (
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-gray-500 uppercase">{product.sub_category}</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(Array.isArray(product.grades) ? product.grades : JSON.parse(product.grades || '[]')).map((g: string, i: number) => (
+                            <span key={i} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-100 text-[10px] font-bold">{g}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : '-'}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-1">
+                      {(Array.isArray(product.presentations) ? product.presentations : JSON.parse(product.presentations || '[]')).map((p: string, i: number) => (
+                        <span key={i} className="px-1.5 py-0.5 bg-gray-50 text-gray-700 rounded border border-gray-200 text-[10px] font-bold">{p}</span>
+                      ))}
+                    </div>
+                  </td>
                   {isAdmin && (
                     <td className="px-6 py-4 text-right">
                       <button onClick={() => handleEdit(product)} className="text-indigo-600 hover:text-indigo-900 mx-2 text-sm font-medium">Editar</button>
@@ -470,7 +525,7 @@ export default function Database() {
       {/* Add Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center shrink-0">
               <h3 className="text-lg font-bold text-gray-900">
                 {editingId ? 'Editar' : 'Nuevo'} {activeTab === 'clients' ? 'Cliente' : activeTab === 'suppliers' ? 'Proveedor' : 'Producto'}
@@ -635,27 +690,143 @@ export default function Database() {
 
                 {activeTab === 'products' && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
-                      <input
-                        type="text"
-                        name="code"
-                        value={productCode}
-                        onChange={e => setProductCode(e.target.value)}
-                        required
-                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
+                        <input
+                          type="text"
+                          value={productCode}
+                          onChange={e => setProductCode(e.target.value)}
+                          required
+                          className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                          placeholder="Ej: 533"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                        <select
+                          value={productCategory}
+                          onChange={e => setProductCategory(e.target.value as any)}
+                          className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                          <option value="Lubricante">Lubricante</option>
+                          <option value="Limpiador">Limpiador</option>
+                          <option value="Accesorio">Accesorio</option>
+                        </select>
+                      </div>
                     </div>
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Presentación</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Nombre / Producto</label>
                       <input
                         type="text"
-                        name="name"
                         value={productName}
                         onChange={e => setProductName(e.target.value)}
                         required
                         className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder="Ej: Limpiador Industrial"
                       />
+                    </div>
+
+                    {productCategory === 'Lubricante' && (
+                      <div className="grid grid-cols-2 gap-4 bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+                        <div>
+                          <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">Tipo</label>
+                          <select
+                            value={productSubCategory}
+                            onChange={e => setProductSubCategory(e.target.value as any)}
+                            required
+                            className="w-full border border-indigo-200 rounded-lg p-2 text-sm outline-none"
+                          >
+                            <option value="">Seleccionar...</option>
+                            <option value="Aceite">Aceite</option>
+                            <option value="Grasa">Grasa</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-indigo-700 uppercase mb-1">
+                            {productSubCategory === 'Aceite' ? 'Grados ISO VG' : 'Grados NLGI'}
+                          </label>
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {productGrades.map((g, i) => (
+                              <span key={i} className="bg-white px-2 py-1 rounded-md border border-indigo-200 text-xs font-bold text-indigo-700 flex items-center">
+                                {g} <X className="w-3 h-3 ml-1 cursor-pointer hover:text-red-500" onClick={() => setProductGrades(prev => prev.filter((_, idx) => idx !== i))} />
+                              </span>
+                            ))}
+                          </div>
+                          <div className="flex gap-1">
+                            <input
+                              type="text"
+                              value={productGrade}
+                              onChange={e => setProductGrade(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  if (productGrade.trim() && !productGrades.includes(productGrade.trim())) {
+                                    setProductGrades([...productGrades, productGrade.trim()]);
+                                    setProductGrade('');
+                                  }
+                                }
+                              }}
+                              placeholder="Ej: 68"
+                              className="flex-1 border border-indigo-200 rounded-lg p-2 text-sm outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (productGrade.trim() && !productGrades.includes(productGrade.trim())) {
+                                  setProductGrades([...productGrades, productGrade.trim()]);
+                                  setProductGrade('');
+                                }
+                              }}
+                              className="bg-indigo-600 text-white p-2 rounded-lg shrink-0"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Presentaciones</label>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {productPresentations.map((p, i) => (
+                          <span key={i} className="bg-gray-100 px-2 py-1 rounded-md border border-gray-300 text-xs font-bold text-gray-800 flex items-center">
+                            {p} <X className="w-3 h-3 ml-1 cursor-pointer hover:text-red-500" onClick={() => setProductPresentations(prev => prev.filter((_, idx) => idx !== i))} />
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex gap-1">
+                        <input
+                          type="text"
+                          value={productPresentation}
+                          onChange={e => setProductPresentation(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (productPresentation.trim() && !productPresentations.includes(productPresentation.trim())) {
+                                setProductPresentations([...productPresentations, productPresentation.trim()]);
+                                setProductPresentation('');
+                              }
+                            }
+                          }}
+                          placeholder="Ej: 20L"
+                          className="flex-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (productPresentation.trim() && !productPresentations.includes(productPresentation.trim())) {
+                              setProductPresentations([...productPresentations, productPresentation.trim()]);
+                              setProductPresentation('');
+                            }
+                          }}
+                          className="bg-gray-600 text-white p-2 rounded-lg shrink-0"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}

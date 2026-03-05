@@ -342,9 +342,11 @@ async function startServer() {
           VALUES (?, 'entrega', ?, ?, ?, ?)
         `);
 
+        const { recibio } = req.body;
         let fullDescription = description || `Entrega de pedido #${order.id}`;
         if (order.oc_ref) fullDescription += ` | OC: ${order.oc_ref}`;
         if (remito_ref) fullDescription += ` | Remito: ${remito_ref}`;
+        if (recibio) fullDescription += ` | Recibió: ${recibio}`;
 
         interactionStmt.run(
           order.client_id,
@@ -522,13 +524,14 @@ async function startServer() {
   });
 
   app.put("/api/products/:id", (req, res) => {
-    const { code, name, price, category } = req.body;
+    const { code, name, price, category, sub_category, grades, presentations } = req.body;
     const stmt = db.prepare(`
       UPDATE products 
-      SET code = ?, name = ?, price = COALESCE(?, price), category = COALESCE(?, category)
+      SET code = ?, name = ?, price = COALESCE(?, price), category = COALESCE(?, category),
+          sub_category = COALESCE(?, sub_category), grades = ?, presentations = ?
       WHERE id = ?
     `);
-    stmt.run(code, name, price ?? null, category ?? null, req.params.id);
+    stmt.run(code, name, price ?? null, category ?? null, sub_category ?? null, JSON.stringify(grades || []), JSON.stringify(presentations || []), req.params.id);
     res.json({ success: true });
   });
 
@@ -541,14 +544,24 @@ async function startServer() {
   app.post("/api/products/import", (req, res) => {
     const { products } = req.body;
     const stmt = db.prepare(`
-      INSERT INTO products (code, name, price, category)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(code) DO UPDATE SET name=excluded.name, price=excluded.price, category=excluded.category
+      INSERT INTO products (code, name, price, category, sub_category, grades, presentations)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(code) DO UPDATE SET 
+        name=excluded.name, price=excluded.price, category=excluded.category,
+        sub_category=excluded.sub_category, grades=excluded.grades, presentations=excluded.presentations
     `);
 
     const insertMany = db.transaction((prods) => {
       for (const p of prods) {
-        stmt.run(p.code, p.name, p.price, p.category);
+        stmt.run(
+          p.code,
+          p.name,
+          p.price || null,
+          p.category || null,
+          p.sub_category || null,
+          JSON.stringify(p.grades || (p.grade ? [p.grade] : [])),
+          JSON.stringify(p.presentations || (p.presentation ? [p.presentation] : []))
+        );
       }
     });
 

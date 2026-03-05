@@ -34,7 +34,7 @@ export default function Clientes() {
   const [interactionType, setInteractionType] = useState('visita');
   const [filterType, setFilterType] = useState('all');
   const [filterTime, setFilterTime] = useState('all');
-  const [productsList, setProductsList] = useState<{ id: number, code: string, name: string }[]>([]);
+  const [productsList, setProductsList] = useState<{ id: number, code: string, name: string, presentation: string }[]>([]);
 
   useEffect(() => {
     fetch('/api/clients')
@@ -365,7 +365,7 @@ export default function Clientes() {
                     />
                     <datalist id="products-list">
                       {productsList.map(p => (
-                        <option key={p.id} value={p.name}>{p.code}</option>
+                        <option key={p.id} value={p.presentation}>{p.code} - {p.name}</option>
                       ))}
                     </datalist>
                   </div>

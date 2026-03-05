@@ -31,6 +31,8 @@ interface OrderProduct {
   code: string;
   name: string;
   qty: number;
+  grade?: string;
+  presentation?: string;
 }
 
 interface FulfillProduct extends OrderProduct {
@@ -44,7 +46,7 @@ export default function Pedidos() {
   const [clientOrders, setClientOrders] = useState<ClientOrder[]>([]);
   const [clients, setClients] = useState<{ id: number, razon_social: string }[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: number, razon_social: string }[]>([]);
-  const [productsList, setProductsList] = useState<{ id: number, code: string, name: string }[]>([]);
+  const [productsList, setProductsList] = useState<{ id: number, code: string, name: string, grades: string[], presentations: string[], category: string }[]>([]);
 
   // Expanded rows
   const [expandedOrders, setExpandedOrders] = useState<Set<any>>(new Set());
@@ -75,7 +77,13 @@ export default function Pedidos() {
     fetchClientOrders();
     fetch('/api/clients').then(res => res.json()).then(data => setClients(data));
     fetch('/api/suppliers').then(res => res.json()).then(data => setSuppliers(data));
-    fetch('/api/products').then(res => res.json()).then(data => setProductsList(data));
+    fetch('/api/products').then(res => res.json()).then(data => {
+      setProductsList(data.map((p: any) => ({
+        ...p,
+        grades: Array.isArray(p.grades) ? p.grades : (p.grades ? JSON.parse(p.grades) : []),
+        presentations: Array.isArray(p.presentations) ? p.presentations : (p.presentations ? JSON.parse(p.presentations) : [])
+      })));
+    });
   }, []);
 
   const fetchSupplierOrders = () => {
@@ -99,12 +107,14 @@ export default function Pedidos() {
   const handleProductChange = (i: number, field: keyof OrderProduct, value: string | number) => {
     const newPs = [...orderProducts];
     newPs[i] = { ...newPs[i], [field]: value };
+
     if (field === 'code') {
       const prod = productsList.find(p => p.code === value);
-      if (prod) newPs[i].name = prod.name;
-    } else if (field === 'name') {
-      const prod = productsList.find(p => p.name === value);
-      if (prod) newPs[i].code = prod.code;
+      if (prod) {
+        newPs[i].name = prod.name;
+        if (prod.grades.length > 0) newPs[i].grade = prod.grades[0];
+        if (prod.presentations.length > 0) newPs[i].presentation = prod.presentations[0];
+      }
     }
     setOrderProducts(newPs);
   };
@@ -285,8 +295,9 @@ export default function Pedidos() {
         <div className="space-y-1">
           {prods.map((p: any, i: number) => (
             <div key={i} className="flex justify-between items-center text-sm border-b border-gray-100 last:border-0 pb-1">
-              <span className="text-gray-800"><span className="font-mono text-xs text-indigo-600 font-bold">{p.code}</span> - {p.name}</span>
-              <span className="font-bold text-gray-900">{p.qty} un.</span>
+              <span className="text-gray-800 font-medium">
+                {p.code} x {p.grade ? `${p.grade} x ` : ''}{p.presentation || p.name} - {p.qty} u
+              </span>
             </div>
           ))}
         </div>
@@ -551,35 +562,67 @@ export default function Pedidos() {
                   <div className="space-y-4">
                     {orderProducts.map((p, i) => (
                       <div key={i} className="grid grid-cols-12 gap-4 items-center">
-                        <div className="col-span-3">
+                        <div className="col-span-2">
                           <input
                             type="text"
                             value={p.code}
                             onChange={e => handleProductChange(i, 'code', e.target.value)}
                             list="codes-list"
-                            className="w-full border border-gray-200 rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-indigo-700 bg-white"
+                            className="w-full border border-gray-200 rounded-xl p-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-indigo-700 bg-white"
                             placeholder="Cód."
                             required
                           />
                         </div>
-                        <div className="col-span-6">
+                        <div className="col-span-3">
                           <input
                             type="text"
                             value={p.name}
-                            onChange={e => handleProductChange(i, 'name', e.target.value)}
-                            list="names-list"
-                            className="w-full border border-gray-200 rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-medium"
-                            placeholder="Presentación / Nombre"
-                            required
+                            readOnly
+                            className="w-full border border-gray-200 rounded-xl p-2 text-xs outline-none bg-gray-50 text-gray-500 font-medium overflow-hidden whitespace-nowrap overflow-ellipsis"
+                            placeholder="Producto"
                           />
                         </div>
                         <div className="col-span-2">
+                          {(() => {
+                            const prod = productsList.find(pr => pr.code === p.code);
+                            if (prod && prod.grades.length > 0) {
+                              return (
+                                <select
+                                  value={p.grade}
+                                  onChange={e => handleProductChange(i, 'grade', e.target.value)}
+                                  className="w-full border border-indigo-200 rounded-xl p-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-indigo-50 font-bold text-indigo-700"
+                                >
+                                  {prod.grades.map(g => <option key={g} value={g}>{g}</option>)}
+                                </select>
+                              );
+                            }
+                            return <div className="text-[10px] text-gray-400 text-center">-</div>;
+                          })()}
+                        </div>
+                        <div className="col-span-2">
+                          {(() => {
+                            const prod = productsList.find(pr => pr.code === p.code);
+                            if (prod && prod.presentations.length > 0) {
+                              return (
+                                <select
+                                  value={p.presentation}
+                                  onChange={e => handleProductChange(i, 'presentation', e.target.value)}
+                                  className="w-full border border-gray-200 rounded-xl p-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-bold"
+                                >
+                                  {prod.presentations.map(pr => <option key={pr} value={pr}>{pr}</option>)}
+                                </select>
+                              );
+                            }
+                            return <div className="text-[10px] text-gray-400 text-center">-</div>;
+                          })()}
+                        </div>
+                        <div className="col-span-2 text-center">
                           <input
                             type="number"
                             min="1"
                             value={p.qty}
                             onChange={e => handleProductChange(i, 'qty', parseInt(e.target.value) || 1)}
-                            className="w-full border border-gray-200 rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-center font-bold"
+                            className="w-16 border border-gray-200 rounded-xl p-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-center font-bold"
                             required
                           />
                         </div>
@@ -677,8 +720,7 @@ export default function Pedidos() {
                   {fulfillProducts.map((p, i) => (
                     <div key={i} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-xl shadow-sm">
                       <div className="flex-1">
-                        <div className="font-bold text-gray-900">{p.code} - {p.name}</div>
-                        <div className="text-xs text-gray-400 font-medium">Pendiente Total: {p.qty} un.</div>
+                        <div className="font-bold text-gray-900">{p.code} x {p.name} - {p.qty} u</div>
                       </div>
                       {isPartial ? (
                         <div className="flex items-center gap-2">
@@ -738,7 +780,7 @@ export default function Pedidos() {
         {productsList.map(p => <option key={`c-${p.id}`} value={p.code} />)}
       </datalist>
       <datalist id="names-list">
-        {productsList.map(p => <option key={`n-${p.id}`} value={p.name} />)}
+        {productsList.map(p => <option key={`n-${p.id}`} value={p.presentation}>{p.code} - {p.name}</option>)}
       </datalist>
     </div>
   );

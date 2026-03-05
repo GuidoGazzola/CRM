@@ -100,9 +100,89 @@ db.exec(`
     code TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
     price REAL,
-    category TEXT
+    category TEXT,
+    sub_category TEXT,
+    grades TEXT, -- JSON array of strings
+    presentations TEXT -- JSON array of strings
   );
 `);
+
+try {
+  // Check if we need to migrate to the new structure (one row per code with JSON variants)
+  const columns = db.prepare("PRAGMA table_info(products)").all() as any[];
+  const hasGrades = columns.some(c => c.name === 'grades');
+  const hasPresentations = columns.some(c => c.name === 'presentations');
+
+  if (!hasGrades || !hasPresentations) {
+    console.log("Migrating products table to new structure...");
+
+    // 1. Get all current data
+    const oldProducts = db.prepare("SELECT * FROM products").all() as any[];
+
+    // 2. Group by code
+    const grouped: Record<string, any> = {};
+    for (const p of oldProducts) {
+      if (!grouped[p.code]) {
+        grouped[p.code] = {
+          ...p,
+          grades: p.grade ? [p.grade] : [],
+          presentations: p.presentation ? [p.presentation] : (p.name === p.presentation ? [] : []) // Try to avoid redundancy
+        };
+        // If presentation was merged into name previously
+        if (p.presentation) {
+          grouped[p.code].presentations = [p.presentation];
+        } else if (p.name && p.name.match(/\d+(L|kg)/i)) {
+          grouped[p.code].presentations = [p.name];
+        }
+      } else {
+        if (p.grade && !grouped[p.code].grades.includes(p.grade)) {
+          grouped[p.code].grades.push(p.grade);
+        }
+        const pres = p.presentation || (p.name && p.name.match(/\d+(L|kg)/i) ? p.name : null);
+        if (pres && !grouped[p.code].presentations.includes(pres)) {
+          grouped[p.code].presentations.push(pres);
+        }
+      }
+    }
+
+    // 3. Recreate table
+    db.exec("DROP TABLE IF EXISTS products");
+    db.exec(`
+      CREATE TABLE products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        price REAL,
+        category TEXT,
+        sub_category TEXT,
+        grades TEXT,
+        presentations TEXT
+      )
+    `);
+
+    // 4. Re-insert merged data
+    const insert = db.prepare(`
+      INSERT INTO products (code, name, price, category, sub_category, grades, presentations)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const code in grouped) {
+      const p = grouped[code];
+      insert.run(
+        p.code,
+        p.name,
+        p.price || null,
+        p.category || null,
+        p.sub_category || null,
+        JSON.stringify(p.grades),
+        JSON.stringify(p.presentations)
+      );
+    }
+    console.log("Migration finished.");
+  }
+} catch (e) {
+  console.error("Migration error:", e);
+}
 
 try {
   db.exec("ALTER TABLE clients ADD COLUMN plazo_de_pago TEXT;");
