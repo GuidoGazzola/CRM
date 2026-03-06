@@ -17,6 +17,8 @@ db.exec(`
     consumos_tipicos TEXT,
     demora_promedio_pago TEXT,
     plazo_de_pago TEXT,
+    has_catalog BOOLEAN DEFAULT 0,
+    catalog_pdf TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 

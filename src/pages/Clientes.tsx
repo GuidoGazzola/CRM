@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, ChevronRight, FileText, Truck, Users, Activity, X } from 'lucide-react';
+import { Search, Plus, ChevronRight, FileText, Truck, Users, Activity, X, Download } from 'lucide-react';
 import { useUser } from '../store/UserContext';
 import { format } from 'date-fns';
 import { formatCuit } from '../utils/formatters';
@@ -12,6 +12,9 @@ interface Client {
   consumos_tipicos: string;
   demora_promedio_pago: string;
   plazo_de_pago: string;
+  has_catalog?: boolean;
+  score?: number;
+  alerts?: string[];
 }
 
 interface Interaction {
@@ -211,8 +214,22 @@ export default function Clientes() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               <div className="space-y-4">
                 <div>
-                  <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Calificación</h4>
-                  <p className="mt-1 text-gray-900">{selectedClient.calificacion || 'No especificada'}</p>
+                  <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Calificación / Nota Final</h4>
+                  <div className="mt-1 flex items-center gap-2">
+                    <p className="text-gray-900 font-medium">{selectedClient.calificacion || 'No especificada'}</p>
+                    {selectedClient.score !== undefined && selectedClient.score !== null && (
+                      <span className="px-2 py-1 bg-indigo-100 text-indigo-800 font-bold rounded-md border border-indigo-200 text-sm">
+                        {selectedClient.score}
+                      </span>
+                    )}
+                  </div>
+                  {selectedClient.alerts && selectedClient.alerts.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {selectedClient.alerts.map((a, i) => (
+                        <p key={i} className="text-xs text-red-600 bg-red-50 p-1 rounded border border-red-100">{a}</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Consumos Típicos</h4>
@@ -228,6 +245,19 @@ export default function Clientes() {
                   <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Plazo de Pago</h4>
                   <p className="mt-1 text-gray-900">{selectedClient.plazo_de_pago || 'No especificado'}</p>
                 </div>
+                {selectedClient.has_catalog && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Catálogo de precios</h4>
+                    <a
+                      href={`/api/clients/${selectedClient.id}/catalog`}
+                      download={`catalogo_cliente_${selectedClient.id}.pdf`}
+                      className="mt-2 text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 px-3 py-1.5 rounded-lg flex items-center w-fit text-sm font-bold transition-colors"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Descargar PDF
+                    </a>
+                  </div>
+                )}
                 {isAdmin && (
                   <div>
                     <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">% Ventas Efectivas</h4>

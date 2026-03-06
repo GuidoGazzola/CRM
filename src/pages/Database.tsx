@@ -30,6 +30,10 @@ export default function Database() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  // New Client Catalog fields
+  const [hasCatalog, setHasCatalog] = useState(false);
+  const [catalogPdf, setCatalogPdf] = useState<string | null>(null);
+
   // Common controlled inputs
   const [razonSocial, setRazonSocial] = useState('');
   const [productCode, setProductCode] = useState('');
@@ -93,6 +97,8 @@ export default function Database() {
         setPaymentType('anticipado');
         setPaymentDays('');
       }
+      setHasCatalog(!!item.has_catalog);
+      setCatalogPdf(item.catalog_pdf || null);
     } else if (activeTab === 'suppliers') {
       setCuit(String(item.cuit || '').replace(/\D/g, '').slice(0, 11));
       setRazonSocial(item.razon_social || '');
@@ -141,7 +147,9 @@ export default function Database() {
       body = {
         razon_social: razonSocial,
         cuit: cuit,
-        plazo_de_pago: finalPlazo
+        plazo_de_pago: finalPlazo,
+        has_catalog: hasCatalog,
+        catalog_pdf: catalogPdf
       };
     } else if (activeTab === 'suppliers') {
       if (cuit.length !== 11) {
@@ -194,6 +202,8 @@ export default function Database() {
       setContacts([]);
       setPaymentType('anticipado');
       setPaymentDays('');
+      setHasCatalog(false);
+      setCatalogPdf(null);
       fetchData();
     }
   };
@@ -333,6 +343,8 @@ export default function Database() {
                 setContacts([]);
                 setPaymentType('anticipado');
                 setPaymentDays('');
+                setHasCatalog(false);
+                setCatalogPdf(null);
                 setShowModal(true);
               }}
               className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center"
@@ -397,6 +409,7 @@ export default function Database() {
                     <th className="px-6 py-4 font-semibold">Razón Social</th>
                     <th className="px-6 py-4 font-semibold">CUIT</th>
                     <th className="px-6 py-4 font-semibold">Plazo de Pago</th>
+                    <th className="px-6 py-4 font-semibold">Catálogo</th>
                     <th className="px-6 py-4 font-semibold">Calificación</th>
                     {isAdmin && <th className="px-6 py-4 font-semibold text-right">Acciones</th>}
                   </>
@@ -406,7 +419,7 @@ export default function Database() {
                     <th className="px-6 py-4 font-semibold">Razón Social</th>
                     <th className="px-6 py-4 font-semibold">CUIT</th>
                     <th className="px-6 py-4 font-semibold">Contactos</th>
-                    <th className="px-6 py-4 font-semibold">Calificación</th>
+                    <th className="px-6 py-4 font-semibold">Calificación / Nota Final</th>
                     {isAdmin && <th className="px-6 py-4 font-semibold text-right">Acciones</th>}
                   </>
                 )}
@@ -428,6 +441,15 @@ export default function Database() {
                   <td className="px-6 py-4 font-medium text-gray-900">{client.razon_social}</td>
                   <td className="px-6 py-4">{formatCuit(client.cuit)}</td>
                   <td className="px-6 py-4">{client.plazo_de_pago || '-'}</td>
+                  <td className="px-6 py-4">
+                    {client.has_catalog ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-50 text-green-700 border border-green-200">
+                        Sí
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4">
                     {client.calificacion ? (
                       <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${client.calificacion === 'Excelente' ? 'bg-green-100 text-green-800' :
@@ -463,15 +485,31 @@ export default function Database() {
                     ) : '-'}
                   </td>
                   <td className="px-6 py-4">
-                    {supplier.calificacion ? (
-                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${supplier.calificacion === 'Excelente' ? 'bg-green-100 text-green-800' :
-                        supplier.calificacion === 'Bueno' ? 'bg-blue-100 text-blue-800' :
-                          supplier.calificacion === 'Regular' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                        }`}>
-                        {supplier.calificacion} {supplier.demora_promedio_entrega ? `(${supplier.demora_promedio_entrega})` : ''}
-                      </span>
-                    ) : '-'}
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        {supplier.calificacion ? (
+                          <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${supplier.calificacion === 'A — Confiable' ? 'bg-green-100 text-green-800' :
+                            supplier.calificacion === 'B — Aceptable' ? 'bg-blue-100 text-blue-800' :
+                              supplier.calificacion === 'C — A mejorar' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-red-100 text-red-800'
+                            }`}>
+                            {supplier.calificacion} {supplier.demora_promedio_entrega ? `(${supplier.demora_promedio_entrega})` : ''}
+                          </span>
+                        ) : '-'}
+                        {supplier.score !== undefined && supplier.score !== null && (
+                          <span className="px-2 py-1 bg-indigo-100 text-indigo-800 font-bold rounded-md border border-indigo-200 text-sm">
+                            {supplier.score}
+                          </span>
+                        )}
+                      </div>
+                      {supplier.alerts && supplier.alerts.length > 0 && (
+                        <div className="mt-1 space-y-1">
+                          {supplier.alerts.map((a: string, i: number) => (
+                            <p key={i} className="text-[10px] text-red-600 bg-red-50 p-1 rounded border border-red-100 leading-tight whitespace-normal max-w-xs">{a}</p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   {isAdmin && (
                     <td className="px-6 py-4 text-right">
@@ -608,6 +646,44 @@ export default function Database() {
                             min="1"
                             className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                           />
+                        </div>
+                      )}
+                    </div>
+
+
+                    <div className="pt-2 border-t border-gray-100 mt-2">
+                      <label className="flex items-center gap-2 cursor-pointer p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+                        <input
+                          type="checkbox"
+                          checked={hasCatalog}
+                          onChange={e => setHasCatalog(e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                        />
+                        <span className="text-sm font-bold text-indigo-900">Catálogo de precios</span>
+                      </label>
+                      {hasCatalog && (
+                        <div className="mt-3">
+                          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Cargar PDF</label>
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                if (file.size > 5 * 1024 * 1024) {
+                                  alert("El archivo no puede pesar más de 5MB");
+                                  return;
+                                }
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  setCatalogPdf(reader.result as string);
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                          />
+                          {catalogPdf && <p className="text-xs text-green-600 mt-2 font-medium">✓ Archivo cargado ({Math.round(catalogPdf.length / 1024)} KB)</p>}
                         </div>
                       )}
                     </div>
@@ -855,34 +931,37 @@ export default function Database() {
               </div>
             </form>
           </div>
-        </div>
-      )}
+        </div >
+      )
+      }
 
       {/* Delete Confirmation Modal */}
-      {deletingId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-6 text-center">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">¿Eliminar registro?</h3>
-            <p className="text-sm text-gray-500 mb-6">
-              Esta acción no se puede deshacer y borrará permanentemente este registro.
-            </p>
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={() => setDeletingId(null)}
-                className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleDelete}
-                className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
-              >
-                Borrar
-              </button>
+      {
+        deletingId && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-6 text-center">
+              <h3 className="text-lg font-bold text-gray-900 mb-2">¿Eliminar registro?</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Esta acción no se puede deshacer y borrará permanentemente este registro.
+              </p>
+              <div className="flex justify-center gap-3">
+                <button
+                  onClick={() => setDeletingId(null)}
+                  className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Borrar
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }

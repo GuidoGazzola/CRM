@@ -1,26 +1,39 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import db from "./src/db/index.js";
+import { getClientScoring } from "./customerScoring.js";
+import { getSupplierScoring } from "./supplierScoring.js";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
 
   // API Routes
 
   // -- Clients --
   app.get("/api/clients", (req, res) => {
-    const clients = db.prepare("SELECT * FROM clients").all();
+    const clients = db.prepare("SELECT * FROM clients").all() as any[];
+    for (const c of clients) {
+      try {
+        const scoringResult = getClientScoring(c.id, db);
+        c.calificacion = scoringResult.categoryLabel;
+        c.score = scoringResult.score;
+        c.alerts = scoringResult.alerts;
+      } catch (e) {
+        c.score = null;
+        c.alerts = [];
+      }
+    }
     res.json(clients);
   });
 
   app.post("/api/clients", (req, res) => {
-    const { razon_social, cuit, calificacion, consumos_tipicos, demora_promedio_pago, plazo_de_pago } = req.body;
+    const { razon_social, cuit, calificacion, consumos_tipicos, demora_promedio_pago, plazo_de_pago, has_catalog, catalog_pdf } = req.body;
     const stmt = db.prepare(`
-      INSERT INTO clients (razon_social, cuit, calificacion, consumos_tipicos, demora_promedio_pago, plazo_de_pago)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO clients (razon_social, cuit, calificacion, consumos_tipicos, demora_promedio_pago, plazo_de_pago, has_catalog, catalog_pdf)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const info = stmt.run(
       razon_social,
@@ -28,16 +41,18 @@ async function startServer() {
       calificacion ?? null,
       consumos_tipicos ?? null,
       demora_promedio_pago ?? null,
-      plazo_de_pago ?? null
+      plazo_de_pago ?? null,
+      has_catalog ? 1 : 0,
+      catalog_pdf ?? null
     );
     res.json({ id: info.lastInsertRowid });
   });
 
   app.put("/api/clients/:id", (req, res) => {
-    const { razon_social, cuit, calificacion, consumos_tipicos, demora_promedio_pago, plazo_de_pago } = req.body;
+    const { razon_social, cuit, calificacion, consumos_tipicos, demora_promedio_pago, plazo_de_pago, has_catalog, catalog_pdf } = req.body;
     const stmt = db.prepare(`
       UPDATE clients 
-      SET razon_social = ?, cuit = ?, calificacion = COALESCE(?, calificacion), consumos_tipicos = COALESCE(?, consumos_tipicos), demora_promedio_pago = COALESCE(?, demora_promedio_pago), plazo_de_pago = COALESCE(?, plazo_de_pago)
+      SET razon_social = ?, cuit = ?, calificacion = COALESCE(?, calificacion), consumos_tipicos = COALESCE(?, consumos_tipicos), demora_promedio_pago = COALESCE(?, demora_promedio_pago), plazo_de_pago = COALESCE(?, plazo_de_pago), has_catalog = COALESCE(?, has_catalog), catalog_pdf = COALESCE(?, catalog_pdf)
       WHERE id = ?
     `);
     stmt.run(
@@ -47,6 +62,8 @@ async function startServer() {
       consumos_tipicos ?? null,
       demora_promedio_pago ?? null,
       plazo_de_pago ?? null,
+      has_catalog !== undefined ? (has_catalog ? 1 : 0) : null,
+      catalog_pdf !== undefined ? catalog_pdf : null,
       req.params.id
     );
     res.json({ success: true });
@@ -79,7 +96,18 @@ async function startServer() {
 
   // -- Suppliers --
   app.get("/api/suppliers", (req, res) => {
-    const suppliers = db.prepare("SELECT * FROM suppliers").all();
+    const suppliers = db.prepare("SELECT * FROM suppliers").all() as any[];
+    for (const s of suppliers) {
+      try {
+        const scoringResult = getSupplierScoring(s.razon_social, db);
+        s.calificacion = scoringResult.categoryLabel;
+        s.score = scoringResult.score;
+        s.alerts = scoringResult.alerts;
+      } catch (e) {
+        s.score = null;
+        s.alerts = [];
+      }
+    }
     res.json(suppliers);
   });
 
@@ -571,13 +599,20 @@ async function startServer() {
 
   // -- Dashboard --
   app.get("/api/dashboard", (req, res) => {
-    // Stats
+    const period = typeof req.query.period === 'string' ? req.query.period : 'Mes';
+    // dateFilter calculation based on period (Semana, Mes, Trimestre, YTD)
+    let dateFilter = "DATE('now', '-1 month')"; // default Mes
+    if (period === 'Semana') dateFilter = "DATE('now', '-7 days')";
+    else if (period === 'Trimestre') dateFilter = "DATE('now', '-3 months')";
+    else if (period === 'YTD') dateFilter = "DATE('now', 'start of year')";
+
+    // Stats (Globales en el dashboard actualmente)
     const presupuestos = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE type = 'presupuesto'").get() as any;
     const entregas = db.prepare("SELECT COUNT(*) as count FROM interactions WHERE type = 'entrega'").get() as any;
     const visitas = db.prepare("SELECT COUNT(*) as count FROM interactions WHERE type = 'visita'").get() as any;
 
-    // Financials
-    const facturadoResult = db.prepare("SELECT SUM(amount) as total FROM invoices").get() as any;
+    // Financials (filtrados por periodo)
+    const facturadoResult = db.prepare(`SELECT SUM(amount) as total FROM invoices WHERE issue_date >= ${dateFilter}`).get() as any;
     const facturadoArs = facturadoResult.total || 0;
     const facturadoUsd = facturadoArs / 1000;
 
@@ -589,12 +624,41 @@ async function startServer() {
     const getChartData = (type: string, table: string) => {
       let query = "";
       if (table === "tasks") {
-        query = `SELECT c.razon_social as name, COUNT(*) as value FROM tasks t JOIN clients c ON t.client_id = c.id WHERE t.type = ? GROUP BY c.id ORDER BY value DESC LIMIT 5`;
+        query = `SELECT c.razon_social as name, COUNT(*) as value FROM tasks t JOIN clients c ON t.client_id = c.id WHERE t.type = ? AND t.created_at >= ${dateFilter} GROUP BY c.id ORDER BY value DESC LIMIT 5`;
       } else {
-        query = `SELECT c.razon_social as name, COUNT(*) as value FROM interactions i JOIN clients c ON i.client_id = c.id WHERE i.type = ? GROUP BY c.id ORDER BY value DESC LIMIT 5`;
+        query = `SELECT c.razon_social as name, COUNT(*) as value FROM interactions i JOIN clients c ON i.client_id = c.id WHERE i.type = ? AND i.date >= ${dateFilter} GROUP BY c.id ORDER BY value DESC LIMIT 5`;
       }
       return db.prepare(query).all(type);
     };
+
+    // Additional stats
+    const presupuestosPendientes = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE type = 'presupuesto' AND status = 'pending'").get() as any;
+    const entregasPendientes = db.prepare("SELECT COUNT(*) as count FROM client_orders WHERE status = 'pending'").get() as any;
+    const pagosPendientes = db.prepare("SELECT COUNT(*) as count FROM invoices WHERE status != 'completed'").get() as any;
+    const pedidosProvPendientes = db.prepare("SELECT COUNT(*) as count FROM supplier_orders WHERE status = 'pending'").get() as any;
+
+    // Proveedores stats
+    const currentSuppliers = db.prepare("SELECT razon_social, calificacion, demora_promedio_entrega FROM suppliers WHERE calificacion IS NOT NULL").all() as any[];
+    for (const s of currentSuppliers) {
+      try {
+        const scoringResult = getSupplierScoring(s.razon_social, db);
+        s.score = scoringResult.score;
+        s.calificacion = scoringResult.categoryLabel;
+      } catch (e) { }
+    }
+
+    // Top 5 Clientes
+    let allClients = db.prepare("SELECT id, razon_social, calificacion FROM clients").all() as any[];
+    for (const c of allClients) {
+      try {
+        const scoringResult = getClientScoring(c.id, db);
+        c.score = scoringResult.score;
+        c.calificacion = scoringResult.categoryLabel;
+      } catch (e) {
+        c.score = 0;
+      }
+    }
+    const topClients = allClients.sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 5);
 
     res.json({
       stats: {
@@ -602,6 +666,14 @@ async function startServer() {
         entregas: entregas.count,
         visitas: visitas.count
       },
+      pending: {
+        presupuestos: presupuestosPendientes.count,
+        entregas: entregasPendientes.count,
+        pagos: pagosPendientes.count,
+        proveedoresPedidos: pedidosProvPendientes.count
+      },
+      suppliers: currentSuppliers,
+      topClients: topClients,
       financials: {
         presupuestado: { usd: presupuestadoUsd, ars: presupuestadoArs },
         facturado: { usd: facturadoUsd, ars: facturadoArs }
