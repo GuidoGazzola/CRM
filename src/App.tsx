@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate, Outlet } from 'react-router-dom';
-import { Home, Users, CheckSquare, Package, DollarSign, Database as DatabaseIcon, LogOut, Menu, X } from 'lucide-react';
+import { Home, Users, CheckSquare, Package, DollarSign, Database as DatabaseIcon, LogOut, Menu, X, Settings } from 'lucide-react';
 import HomePage from './pages/Home';
 import ClientesPage from './pages/Clientes';
 import TareasPage from './pages/Tareas';
@@ -8,12 +8,14 @@ import PedidosPage from './pages/Pedidos';
 import PagosPage from './pages/Pagos';
 import DatabasePage from './pages/Database';
 import LoginPage from './pages/Login';
+import ProfileModal from './components/ProfileModal';
 import { UserProvider, useUser } from './store/UserContext';
 import { supabase } from './supabaseClient';
 import { Session } from '@supabase/supabase-js';
 
 function Layout({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const location = useLocation();
   const { user } = useUser();
 
@@ -65,13 +67,22 @@ function Layout({ children }: { children: React.ReactNode }) {
               <p className="font-semibold">{user.name}</p>
               <p className="text-indigo-200 text-xs">{user.role}</p>
             </div>
-            <button
-              onClick={() => supabase.auth.signOut()}
-              className="p-2 hover:bg-indigo-600 rounded-full transition-colors"
-              title="Cerrar Sesión"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setIsProfileModalOpen(true)}
+                className="p-2 hover:bg-indigo-600 rounded-full transition-colors"
+                title="Mi Perfil"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="p-2 hover:bg-indigo-600 rounded-full transition-colors"
+                title="Cerrar Sesión"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -80,6 +91,10 @@ function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 md:p-8">
         {children}
       </main>
+
+      {isProfileModalOpen && (
+        <ProfileModal onClose={() => setIsProfileModalOpen(false)} />
+      )}
     </div>
   );
 }
