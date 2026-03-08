@@ -40,7 +40,7 @@ export default function Login() {
                         Ingreso al Sistema
                     </h2>
                     <p className="mt-2 text-center text-sm text-gray-600">
-                        CRM Comercial
+                        MALYL CRM 1.0
                     </p>
                 </div>
             </div>

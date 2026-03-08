@@ -32,7 +32,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
       {/* Mobile Header */}
       <div className="md:hidden bg-indigo-600 text-white p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold">CRM Comercial</h1>
+        <h1 className="text-xl font-bold">MALYL CRM 1.0</h1>
         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
           {isMobileMenuOpen ? <X /> : <Menu />}
         </button>
@@ -41,7 +41,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <div className={`${isMobileMenuOpen ? 'block' : 'hidden'} md:block w-full md:w-64 bg-indigo-700 text-white flex-shrink-0`}>
         <div className="p-6 hidden md:block">
-          <h1 className="text-2xl font-bold">CRM Comercial</h1>
+          <h1 className="text-2xl font-bold">MALYL CRM 1.0</h1>
         </div>
         <nav className="mt-4">
           {navItems.map((item) => {
