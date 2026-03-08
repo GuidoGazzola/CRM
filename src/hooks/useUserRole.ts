@@ -36,6 +36,7 @@ export function useUserRole(session: Session | null) {
                     if (isMounted) {
                         // Validar que el rol sea uno de los tipos permitidos, fallback a 'user'
                         const fetchedRole = data.rol === 'admin' ? 'admin' : 'user';
+                        console.log('Rol obtenido desde Supabase para el usuario:', fetchedRole);
                         setRole(fetchedRole);
                         if (data.nombre) setName(data.nombre);
                     }

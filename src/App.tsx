@@ -106,12 +106,13 @@ function ProtectedLayout({ session }: { session: Session | null }) {
   const { role, name, loadingRole } = useUserRole(session);
 
   useEffect(() => {
-    if (session?.user && !loadingRole) {
+    if (session?.user) {
       setUser({
         name: name || session.user.email?.split('@')[0] || 'Usuario',
         role: role,
         email: session.user.email,
-        id: session.user.id
+        id: session.user.id,
+        isLoading: loadingRole
       });
     }
   }, [session, setUser, role, name, loadingRole]);

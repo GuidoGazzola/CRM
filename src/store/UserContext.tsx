@@ -7,6 +7,7 @@ interface User {
   role: Role;
   email?: string;
   id?: string;
+  isLoading?: boolean;
 }
 
 interface UserContextType {
@@ -18,10 +19,13 @@ interface UserContextType {
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User>({ name: 'Admin', role: 'admin' });
+  const [user, setUser] = useState<User>({ name: 'Usuario', role: 'admin', isLoading: true });
+
+  // Si está cargando, asumimos true para no deshabilitar botones de forma abrupta
+  const isAdmin = user.isLoading || user.role === 'admin';
 
   return (
-    <UserContext.Provider value={{ user, setUser, isAdmin: user.role === 'admin' }}>
+    <UserContext.Provider value={{ user, setUser, isAdmin }}>
       {children}
     </UserContext.Provider>
   );
