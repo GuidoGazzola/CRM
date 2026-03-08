@@ -3,6 +3,7 @@ import { Search, Plus, ChevronRight, FileText, Truck, Users, Activity, X, Downlo
 import { useUser } from '../store/UserContext';
 import { format } from 'date-fns';
 import { formatCuit } from '../utils/formatters';
+import { supabase } from '../supabaseClient';
 
 interface Client {
   id: number;
@@ -40,20 +41,26 @@ export default function Clientes() {
   const [productsList, setProductsList] = useState<{ id: number, code: string, name: string, presentation: string }[]>([]);
 
   useEffect(() => {
-    fetch('/api/clients')
-      .then(res => res.json())
-      .then(data => setClients(data));
-    fetch('/api/products')
-      .then(res => res.json())
-      .then(data => setProductsList(data));
+    const fetchData = async () => {
+      const [{ data: clientsData }, { data: productsData }] = await Promise.all([
+        supabase.from('clients').select('*'),
+        supabase.from('products').select('*')
+      ]);
+      if (clientsData) setClients(clientsData);
+      if (productsData) setProductsList(productsData);
+    };
+    fetchData();
   }, []);
 
   useEffect(() => {
     if (selectedClient) {
-      fetch('/api/interactions')
-        .then(res => res.json())
-        .then((data: Interaction[]) => {
-          setInteractions(data.filter(i => i.client_id === selectedClient.id));
+      supabase
+        .from('interactions')
+        .select('*')
+        .eq('client_id', selectedClient.id)
+        .order('date', { ascending: false })
+        .then(({ data }) => {
+          if (data) setInteractions(data as Interaction[]);
         });
     }
   }, [selectedClient]);
@@ -103,35 +110,26 @@ export default function Clientes() {
       products
     };
 
-    const res = await fetch('/api/interactions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newInteraction)
-    });
+    const { error: insertError } = await supabase.from('interactions').insert([newInteraction]);
 
-    if (res.ok) {
+    if (!insertError) {
       if (type === 'presupuesto' || type === 'prueba') {
-        await fetch('/api/tasks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            client_id: selectedClient?.id,
-            type,
-            products,
-            description,
-            requested_by: user.name,
-            status: 'pending'
-          })
-        });
+        await supabase.from('tasks').insert([{
+          client_id: selectedClient?.id,
+          type,
+          products,
+          description,
+          requested_by: user.name,
+          status: 'pending'
+        }]);
       }
 
       setShowInteractionModal(false);
       setInteractionType('visita');
       // Refresh interactions
-      fetch('/api/interactions')
-        .then(res => res.json())
-        .then((data: Interaction[]) => {
-          setInteractions(data.filter(i => i.client_id === selectedClient?.id));
+      supabase.from('interactions').select('*').eq('client_id', selectedClient?.id).order('date', { ascending: false })
+        .then(({ data }) => {
+          if (data) setInteractions(data as Interaction[]);
         });
     }
   };
@@ -249,8 +247,8 @@ export default function Clientes() {
                   <div>
                     <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Catálogo de precios</h4>
                     <a
-                      href={`/api/clients/${selectedClient.id}/catalog`}
-                      download={`catalogo_cliente_${selectedClient.id}.pdf`}
+                      href={selectedClient.catalog_pdf || '#'}
+                      target="_blank" rel="noopener noreferrer"
                       className="mt-2 text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 px-3 py-1.5 rounded-lg flex items-center w-fit text-sm font-bold transition-colors"
                     >
                       <Download className="w-4 h-4 mr-2" />

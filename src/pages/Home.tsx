@@ -3,6 +3,7 @@ import { useUser } from '../store/UserContext';
 import { FileText, Truck, Users, DollarSign, Building2, Package, Clock, ShieldAlert, BadgeCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { supabase } from '../supabaseClient';
 
 type Timeframe = 'Semana' | 'Mes' | 'Trimestre' | 'YTD';
 const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#f97316'];
@@ -15,9 +16,95 @@ export default function Home() {
   const [dashboardData, setDashboardData] = useState<any>(null);
 
   useEffect(() => {
-    fetch(`/api/dashboard?period=${timeframe}`)
-      .then(res => res.json())
-      .then(data => setDashboardData(data));
+    const fetchDashboard = async () => {
+      // dateFilter calculation
+      const dateFilter = new Date();
+      if (timeframe === 'Semana') dateFilter.setDate(dateFilter.getDate() - 7);
+      else if (timeframe === 'Mes') dateFilter.setMonth(dateFilter.getMonth() - 1);
+      else if (timeframe === 'Trimestre') dateFilter.setMonth(dateFilter.getMonth() - 3);
+      else if (timeframe === 'YTD') {
+        dateFilter.setMonth(0, 1);
+        dateFilter.setHours(0, 0, 0, 0);
+      }
+      const dateStr = dateFilter.toISOString();
+
+      // Parallel queries
+      const [
+        { data: tasksData },
+        { data: interactionsData },
+        { data: invoicesData },
+        { count: presupuestosPendientes },
+        { count: entregasPendientes },
+        { count: pagosPendientes },
+        { count: pedidosProvPendientes },
+        { data: suppliersData },
+        { data: clientsData }
+      ] = await Promise.all([
+        supabase.from('tasks').select('id, type, created_at, client_id'),
+        supabase.from('interactions').select('id, type, date, client_id'),
+        supabase.from('invoices').select('amount, issue_date'),
+        supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('type', 'presupuesto').eq('status', 'pending'),
+        supabase.from('client_orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('invoices').select('*', { count: 'exact', head: true }).neq('status', 'completed'),
+        supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('suppliers').select('razon_social, calificacion, demora_promedio_entrega, score').not('calificacion', 'is', null),
+        supabase.from('clients').select('id, razon_social, calificacion, score')
+      ]);
+
+      const tData = tasksData || [];
+      const iData = interactionsData || [];
+      const invData = invoicesData || [];
+
+      // Stats
+      const presupuestos = tData.filter(t => t.type === 'presupuesto').length;
+      const entregas = iData.filter(i => i.type === 'entrega').length;
+      const visitas = iData.filter(i => i.type === 'visita').length;
+
+      // Financials (filtrados por periodo)
+      const facturadoArs = invData.filter(i => i.issue_date >= dateStr).reduce((acc, curr) => acc + (curr.amount || 0), 0);
+      const facturadoUsd = facturadoArs / 1000;
+      const presupuestadoArs = facturadoArs * 1.5;
+      const presupuestadoUsd = presupuestadoArs / 1000;
+
+      // Chart Data grouping
+      const groupData = (dataRow: any[], dateField: string, type: string) => {
+        const filtered = dataRow.filter(r => r.type === type && r[dateField] >= dateStr);
+        const counts: any = {};
+        filtered.forEach(r => {
+          counts[r.client_id] = (counts[r.client_id] || 0) + 1;
+        });
+        const clientsLookup = (clientsData || []).reduce((acc: any, c: any) => { acc[c.id] = c.razon_social; return acc; }, {});
+        return Object.keys(counts).map(cid => ({
+          name: clientsLookup[cid] || 'Desconocido',
+          value: counts[cid]
+        })).sort((a, b) => b.value - a.value).slice(0, 5);
+      };
+
+      const topClients = (clientsData || []).sort((a: any, b: any) => (b.score || 0) - (a.score || 0)).slice(0, 5);
+
+      setDashboardData({
+        stats: { presupuestos, entregas, visitas },
+        pending: {
+          presupuestos: presupuestosPendientes || 0,
+          entregas: entregasPendientes || 0,
+          pagos: pagosPendientes || 0,
+          proveedoresPedidos: pedidosProvPendientes || 0
+        },
+        suppliers: suppliersData || [],
+        topClients,
+        financials: {
+          presupuestado: { usd: presupuestadoUsd, ars: presupuestadoArs },
+          facturado: { usd: facturadoUsd, ars: facturadoArs }
+        },
+        chartData: {
+          presupuestos: groupData(tData, 'created_at', 'presupuesto'),
+          entregas: groupData(iData, 'date', 'entrega'),
+          visitas: groupData(iData, 'date', 'visita')
+        }
+      });
+    };
+
+    fetchDashboard();
   }, [timeframe]); // Reload data when timeframe changes
 
   if (!dashboardData) return <div className="p-4 text-gray-500 font-medium">Cargando estadísticas...</div>;

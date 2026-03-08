@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CheckSquare, Clock, CheckCircle2, XCircle, AlertCircle, ChevronRight, X, RotateCcw, Bell, Truck, Plus, Minus } from 'lucide-react';
 import { useUser } from '../store/UserContext';
 import { format, addDays } from 'date-fns';
+import { supabase } from '../supabaseClient';
 
 interface Task {
   id: number;
@@ -39,26 +40,32 @@ export default function Tareas() {
     fetchClientOrders();
   }, []);
 
-  const fetchTasks = () => {
-    fetch('/api/tasks')
-      .then(res => res.json())
-      .then(data => setTasks(data));
+  const fetchTasks = async () => {
+    const { data } = await supabase.from('tasks').select('*, clients(razon_social)').order('created_at', { ascending: false });
+    if (data) setTasks(data.map((t: any) => ({ ...t, client_name: t.clients?.razon_social })));
   };
 
-  const fetchClientOrders = () => {
-    fetch('/api/orders/client')
-      .then(res => res.json())
-      .then(data => setClientOrders(data));
+  const fetchClientOrders = async () => {
+    const { data } = await supabase.from('client_orders').select('*, clients(razon_social)').order('order_date', { ascending: false });
+    if (data) setClientOrders(data.map((o: any) => ({ ...o, client_name: o.clients?.razon_social })));
   };
 
   const handleStatusChange = async (id: number, status: string, extraData: any = {}) => {
-    const res = await fetch(`/api/tasks/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, completed_by: user.name, ...extraData })
-    });
+    const updatePayload: any = { status, ...extraData };
+    if (status === 'completed') {
+      updatePayload.completed_by = user.name || 'Usuario';
+      updatePayload.completed_at = new Date().toISOString();
+    } else if (status === 'pending' || status === 'approved') {
+      updatePayload.completed_by = null;
+      updatePayload.completed_at = null;
+      updatePayload.result = null;
+      updatePayload.reminder_date = null;
+      updatePayload.reminder_status = null;
+    }
 
-    if (res.ok) {
+    const { error } = await supabase.from('tasks').update(updatePayload).eq('id', id);
+
+    if (!error) {
       fetchTasks();
     }
   };
@@ -93,50 +100,44 @@ export default function Tareas() {
         const resultDescription = `Remito: ${remito}${recibio ? ` - Recibió: ${recibio}` : ''}${isPartial ? ' (Parcial)' : ''}`;
 
         // Update the order via dispatch endpoint
-        const res = await fetch(`/api/orders/client/${completingTask.id}/dispatch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: finalStatus,
-            products: JSON.stringify(updatedProducts),
-            delivered_products: JSON.stringify(deliveredProducts),
-            remito_ref: remito,
-            recibio: recibio,
-            user: user.name,
-            description: isPartial ? `Entrega parcial de pedido #${completingTask.id}` : `Entrega completa de pedido #${completingTask.id}`
-          })
-        });
+        const { error: dispatchError } = await supabase.from('client_orders').update({
+          status: finalStatus,
+          products: JSON.stringify(updatedProducts),
+          remito_ref: remito,
+          oc_ref: (completingTask as any).oc_ref || null
+        }).eq('id', completingTask.id);
 
-        if (!res.ok) throw new Error('Error al despachar el pedido');
+        if (dispatchError) throw new Error('Error al despachar el pedido');
 
-        // If total delivery, delete the order as previously requested (optional, but current logic does it)
-        // Wait, if I delete it, the dispatch endpoint already updated it. 
-        // Actually, the user says "La linea de entrega quedara pendiente hasta que todos los items se hayan marcado como entregados."
-        // So we should NOT delete it if it's pending. If it's dispatched (total), should we delete it?
-        // Let's stick to updating it and letting the filter handle it.
+        let fullDescription = isPartial ? `Entrega parcial de pedido #${completingTask.id}` : `Entrega completa de pedido #${completingTask.id}`;
+        if ((completingTask as any).oc_ref) fullDescription += ` | OC: ${(completingTask as any).oc_ref}`;
+        if (remito) fullDescription += ` | Remito: ${remito}`;
+        if (recibio) fullDescription += ` | Recibió: ${recibio}`;
+
+        await supabase.from('interactions').insert([{
+          client_id: completingTask.client_id,
+          type: 'entrega',
+          date: new Date().toISOString(),
+          user: user.name || 'Usuario',
+          description: fullDescription,
+          products: JSON.stringify(deliveredProducts)
+        }]);
+
         if (finalStatus === 'dispatched') {
-          await fetch(`/api/orders/client/${completingTask.id}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' }
-          });
+          await supabase.from('client_orders').delete().eq('id', completingTask.id);
         }
 
         // Crear una copia real en la tabla de Tasks para que pase a los Completados
-        const taskRes = await fetch('/api/tasks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            client_id: completingTask.client_id,
-            type: 'entrega',
-            products: JSON.stringify(deliveredProducts),
-            description: isPartial ? 'Entrega parcial del pedido' : 'Pedido despachado y entregado',
-            requested_by: '-',
-            status: 'pending'
-          })
-        });
-        const taskData = await taskRes.json();
+        const { data: taskData, error: taskError } = await supabase.from('tasks').insert([{
+          client_id: completingTask.client_id,
+          type: 'entrega',
+          products: JSON.stringify(deliveredProducts),
+          description: isPartial ? 'Entrega parcial del pedido' : 'Pedido despachado y entregado',
+          requested_by: '-',
+          status: 'pending'
+        }]).select().single();
 
-        if (taskData.id) {
+        if (taskData?.id) {
           await handleStatusChange(taskData.id, 'completed', { result: resultDescription });
         }
 
@@ -147,18 +148,13 @@ export default function Tareas() {
 
         if (completingTask.type === 'prueba') {
           // Add interaction for the result
-          await fetch('/api/interactions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              client_id: completingTask.client_id,
-              type: 'prueba',
-              date: new Date().toISOString(),
-              user: user.name,
-              description: `Resultado de la prueba: ${result}`,
-              products: '[]'
-            })
-          });
+          await supabase.from('interactions').insert([{
+            client_id: completingTask.client_id,
+            type: 'prueba',
+            date: new Date().toISOString(),
+            user: user.name || 'Usuario',
+            description: `Resultado de la prueba: ${result}`
+          }]);
 
           await handleStatusChange(completingTask.id, 'completed', { result });
         } else if (completingTask.type === 'presupuesto') {

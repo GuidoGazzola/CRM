@@ -3,6 +3,7 @@ import { Database as DatabaseIcon, Users, Truck, Package, Upload, Plus, X, Trash
 import { useUser } from '../store/UserContext';
 import Papa from 'papaparse';
 import { formatCuit } from '../utils/formatters';
+import { supabase } from '../supabaseClient';
 
 interface ContactChannel {
   name: string;
@@ -49,18 +50,21 @@ export default function Database() {
     fetchData();
   }, [activeTab]);
 
-  const fetchData = () => {
+  const fetchData = async () => {
     if (activeTab === 'clients') {
-      fetch('/api/clients').then(res => res.json()).then(setClients);
+      const { data } = await supabase.from('clients').select('*');
+      if (data) setClients(data);
     } else if (activeTab === 'suppliers') {
-      fetch('/api/suppliers').then(res => res.json()).then(data => {
+      const { data } = await supabase.from('suppliers').select('*');
+      if (data) {
         setSuppliers(data.map((s: any) => ({
           ...s,
           contact_channels: s.contact_channels ? JSON.parse(s.contact_channels) : []
         })));
-      });
+      }
     } else if (activeTab === 'products') {
-      fetch('/api/products').then(res => res.json()).then(setProducts);
+      const { data } = await supabase.from('products').select('*');
+      if (data) setProducts(data);
     }
   };
 
@@ -123,18 +127,19 @@ export default function Database() {
 
   const handleDelete = async () => {
     if (!deletingId) return;
-    const res = await fetch(`/api/${activeTab}/${deletingId}`, { method: 'DELETE' });
-    if (res.ok) {
+    const { error } = await supabase.from(activeTab).delete().eq('id', deletingId);
+    if (!error) {
       setDeletingId(null);
       fetchData();
+    } else {
+      alert(`Error al borrar: ${error.message}`);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
 
-    let endpoint = '';
+    let table = activeTab;
     let body: any = {};
 
     if (activeTab === 'clients') {
@@ -143,7 +148,6 @@ export default function Database() {
         return;
       }
       const finalPlazo = paymentType === 'anticipado' ? 'Anticipado' : paymentDays;
-      endpoint = '/api/clients';
       body = {
         razon_social: razonSocial,
         cuit: cuit,
@@ -156,37 +160,32 @@ export default function Database() {
         alert('El CUIT debe tener exactamente 11 dígitos numéricos.');
         return;
       }
-      endpoint = '/api/suppliers';
       body = {
         razon_social: razonSocial,
         cuit: cuit,
         contact_channels: JSON.stringify(contacts)
       };
     } else if (activeTab === 'products') {
-      endpoint = editingId ? `/api/products/${editingId}` : '/api/products/import';
-      const prodBody = {
+      body = {
         code: productCode,
         name: productName,
         category: productCategory,
         sub_category: productCategory === 'Lubricante' ? productSubCategory : null,
-        grades: productGrades,
-        presentations: productPresentations
+        grades: JSON.stringify(productGrades),
+        presentations: JSON.stringify(productPresentations)
       };
-
-      body = editingId ? prodBody : { products: [prodBody] };
     }
 
-    if (editingId && activeTab !== 'products') {
-      endpoint = `${endpoint}/${editingId}`;
+    let err = null;
+    if (editingId) {
+      const { error } = await supabase.from(table).update(body).eq('id', editingId);
+      err = error;
+    } else {
+      const { error } = await supabase.from(table).insert([body]);
+      err = error;
     }
 
-    const res = await fetch(endpoint, {
-      method: editingId ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-
-    if (res.ok) {
+    if (!err) {
       setShowModal(false);
       setEditingId(null);
       setCuit('');
@@ -205,6 +204,8 @@ export default function Database() {
       setHasCatalog(false);
       setCatalogPdf(null);
       fetchData();
+    } else {
+      alert(`Error al guardar: ${err.message}`);
     }
   };
 
@@ -217,48 +218,35 @@ export default function Database() {
       skipEmptyLines: true,
       transformHeader: (h) => h.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, '_'),
       complete: async (results) => {
-        let endpoint = '';
-        let body: any = {};
+        let table = activeTab;
+        let rowsToInsert: any[] = [];
 
         if (activeTab === 'clients') {
-          endpoint = '/api/clients/import';
-          body = {
-            clients: results.data.map((row: any) => ({
-              razon_social: row.razon_social,
-              cuit: row.cuit?.replace(/\D/g, ''),
-              plazo_de_pago: row.plazo_de_pago
-            })).filter((c: any) => c.razon_social && c.cuit?.length === 11)
-          };
+          rowsToInsert = results.data.map((row: any) => ({
+            razon_social: row.razon_social,
+            cuit: row.cuit?.replace(/\D/g, ''),
+            plazo_de_pago: row.plazo_de_pago
+          })).filter((c: any) => c.razon_social && c.cuit?.length === 11);
         } else if (activeTab === 'suppliers') {
-          endpoint = '/api/suppliers/import';
-          body = {
-            suppliers: results.data.map((row: any) => ({
-              razon_social: row.razon_social,
-              cuit: row.cuit?.replace(/\D/g, ''),
-              contact_channels: row.contact_channels || '[]'
-            })).filter((s: any) => s.razon_social && s.cuit?.length === 11)
-          };
+          rowsToInsert = results.data.map((row: any) => ({
+            razon_social: row.razon_social,
+            cuit: row.cuit?.replace(/\D/g, ''),
+            contact_channels: row.contact_channels || '[]'
+          })).filter((s: any) => s.razon_social && s.cuit?.length === 11);
         } else if (activeTab === 'products') {
-          endpoint = '/api/products/import';
-          body = {
-            products: results.data.map((row: any) => ({
-              code: row.codigo,
-              name: row.nombre || row.presentacion, // fallback
-              category: row.categoria,
-              sub_category: row.sub_categoria,
-              grade: row.grado,
-              presentation: row.presentacion
-            })).filter((p: any) => p.code && p.presentation)
-          };
+          rowsToInsert = results.data.map((row: any) => ({
+            code: row.codigo,
+            name: row.nombre || row.presentacion,
+            category: row.categoria,
+            sub_category: row.sub_categoria,
+            grades: row.grado ? JSON.stringify([row.grado]) : '[]',
+            presentations: row.presentacion ? JSON.stringify([row.presentacion]) : '[]'
+          })).filter((p: any) => p.code && JSON.parse(p.presentations).length > 0);
         }
 
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
+        const { error } = await supabase.from(table).insert(rowsToInsert);
 
-        if (res.ok) {
+        if (!error) {
           setImportMessage({ type: 'success', text: 'Datos importados correctamente.' });
           fetchData();
         } else {

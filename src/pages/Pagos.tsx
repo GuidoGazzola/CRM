@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DollarSign, FileText, Calendar, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { format, differenceInDays, addDays } from 'date-fns';
 import { useUser } from '../store/UserContext';
+import { supabase } from '../supabaseClient';
 
 interface Invoice {
   id: number;
@@ -30,13 +31,16 @@ export default function Pagos() {
 
   useEffect(() => {
     fetchInvoices();
-    fetch('/api/clients').then(res => res.json()).then(data => setClients(data));
+    const loadData = async () => {
+      const { data } = await supabase.from('clients').select('id, razon_social, plazo_de_pago');
+      if (data) setClients(data as any[]);
+    };
+    loadData();
   }, []);
 
-  const fetchInvoices = () => {
-    fetch('/api/invoices')
-      .then(res => res.json())
-      .then(data => setInvoices(data));
+  const fetchInvoices = async () => {
+    const { data } = await supabase.from('invoices').select('*, clients(razon_social)').order('issue_date', { ascending: false });
+    if (data) setInvoices(data.map((i: any) => ({ ...i, client_name: i.clients?.razon_social })));
   };
 
   const handleClientSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -69,45 +73,28 @@ export default function Pagos() {
 
     const due_date = addDays(new Date(issue_date), payment_term_days).toISOString();
 
-    const res = await fetch('/api/invoices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id,
-        invoice_number,
-        amount,
-        issue_date: new Date(issue_date).toISOString(),
-        payment_term_days,
-        due_date
-      })
-    });
+    const { error: invoiceError } = await supabase.from('invoices').insert([{
+      client_id: Number(client_id),
+      invoice_number,
+      amount,
+      issue_date: new Date(issue_date).toISOString(),
+      payment_term_days,
+      due_date,
+      status: 'pending'
+    }]);
 
-    if (res.ok) {
+    if (!invoiceError) {
       // Create reminder task
-      const clientName = clients.find(c => c.id === parseInt(client_id as string))?.razon_social;
-      await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id,
-          type: 'cobranza',
-          products: '[]',
-          description: `Cobro de factura ${invoice_number} por $${amount}`,
-          requested_by: user.name,
-          status: 'pending'
-        })
-      }).then(res => res.json()).then(async (data) => {
-        // Update task with reminder date
-        await fetch(`/api/tasks/${data.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: 'pending',
-            reminder_date: due_date,
-            reminder_status: 'active'
-          })
-        });
-      });
+      await supabase.from('tasks').insert([{
+        client_id: Number(client_id),
+        type: 'cobranza',
+        products: '[]',
+        description: `Cobro de factura ${invoice_number} por $${amount}`,
+        requested_by: user.name || 'Usuario',
+        status: 'pending',
+        reminder_date: due_date,
+        reminder_status: 'active'
+      }]);
 
       setShowNewInvoiceModal(false);
       fetchInvoices();
@@ -122,18 +109,23 @@ export default function Pagos() {
     const payment_date = formData.get('payment_date') as string;
     const payment_amount = parseFloat(formData.get('payment_amount') as string);
     const has_retentions = formData.get('has_retentions') === 'on';
+    const status = has_retentions ? 'paid_pending_retentions' : 'completed';
 
-    const res = await fetch(`/api/invoices/${selectedInvoice.id}/pay`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        payment_date: new Date(payment_date).toISOString(),
-        payment_amount,
-        has_retentions
-      })
-    });
+    const { error } = await supabase.from('invoices').update({
+      status,
+      payment_date: new Date(payment_date).toISOString(),
+      payment_amount,
+      has_retentions
+    }).eq('id', selectedInvoice.id);
 
-    if (res.ok) {
+    if (!error) {
+      if (status === 'completed') {
+        await supabase.from('tasks').update({ reminder_status: 'cancelled' })
+          .eq('type', 'cobranza')
+          .eq('client_id', selectedInvoice.client_id)
+          .like('description', `%${selectedInvoice.invoice_number}%`);
+      }
+
       setShowPaymentModal(false);
       setSelectedInvoice(null);
       fetchInvoices();
@@ -141,15 +133,19 @@ export default function Pagos() {
   };
 
   const handleSendRetentions = async (id: number) => {
-    const res = await fetch(`/api/invoices/${id}/retentions`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        retentions_sent_date: new Date().toISOString()
-      })
-    });
+    const { error } = await supabase.from('invoices').update({
+      status: 'completed',
+      retentions_sent_date: new Date().toISOString()
+    }).eq('id', id);
 
-    if (res.ok) {
+    if (!error) {
+      const inv = invoices.find(i => i.id === id);
+      if (inv) {
+        await supabase.from('tasks').update({ reminder_status: 'cancelled' })
+          .eq('type', 'cobranza')
+          .eq('client_id', inv.client_id)
+          .like('description', `%${inv.invoice_number}%`);
+      }
       fetchInvoices();
     }
   };

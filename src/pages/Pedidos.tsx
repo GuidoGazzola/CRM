@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Package, Truck, Calendar, CheckCircle2, Clock, ChevronDown, ChevronRight, Edit2, Trash2, Plus, Minus, History, FileText, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { useUser } from '../store/UserContext';
+import { supabase } from '../supabaseClient';
 
 interface SupplierOrder {
   id: number;
@@ -75,23 +76,33 @@ export default function Pedidos() {
   useEffect(() => {
     fetchSupplierOrders();
     fetchClientOrders();
-    fetch('/api/clients').then(res => res.json()).then(data => setClients(data));
-    fetch('/api/suppliers').then(res => res.json()).then(data => setSuppliers(data));
-    fetch('/api/products').then(res => res.json()).then(data => {
-      setProductsList(data.map((p: any) => ({
-        ...p,
-        grades: Array.isArray(p.grades) ? p.grades : (p.grades ? JSON.parse(p.grades) : []),
-        presentations: Array.isArray(p.presentations) ? p.presentations : (p.presentations ? JSON.parse(p.presentations) : [])
-      })));
-    });
+    const loadData = async () => {
+      const [{ data: clientsData }, { data: suppliersData }, { data: productsData }] = await Promise.all([
+        supabase.from('clients').select('id, razon_social'),
+        supabase.from('suppliers').select('id, razon_social'),
+        supabase.from('products').select('*')
+      ]);
+      if (clientsData) setClients(clientsData);
+      if (suppliersData) setSuppliers(suppliersData);
+      if (productsData) {
+        setProductsList(productsData.map((p: any) => ({
+          ...p,
+          grades: Array.isArray(p.grades) ? p.grades : (p.grades ? JSON.parse(p.grades) : []),
+          presentations: Array.isArray(p.presentations) ? p.presentations : (p.presentations ? JSON.parse(p.presentations) : [])
+        })));
+      }
+    };
+    loadData();
   }, []);
 
-  const fetchSupplierOrders = () => {
-    fetch('/api/orders/supplier').then(res => res.json()).then(data => setSupplierOrders(data));
+  const fetchSupplierOrders = async () => {
+    const { data } = await supabase.from('supplier_orders').select('*').order('request_date', { ascending: false });
+    if (data) setSupplierOrders(data);
   };
 
-  const fetchClientOrders = () => {
-    fetch('/api/orders/client').then(res => res.json()).then(data => setClientOrders(data));
+  const fetchClientOrders = async () => {
+    const { data } = await supabase.from('client_orders').select('*, clients(razon_social)').order('order_date', { ascending: false });
+    if (data) setClientOrders(data.map((o: any) => ({ ...o, client_name: o.clients?.razon_social })));
   };
 
   const toggleExpand = (id: any) => {
@@ -157,8 +168,9 @@ export default function Pedidos() {
 
   const handleDelete = async () => {
     if (!deletingId) return;
-    const res = await fetch(`/api/orders/${activeTab}/${deletingId}`, { method: 'DELETE' });
-    if (res.ok) {
+    const table = activeTab === 'supplier' ? 'supplier_orders' : 'client_orders';
+    const { error } = await supabase.from(table).delete().eq('id', deletingId);
+    if (!error) {
       setDeletingId(null);
       if (activeTab === 'supplier') fetchSupplierOrders();
       else fetchClientOrders();
@@ -197,35 +209,67 @@ export default function Pedidos() {
     const parts = fulfillDate.split('-');
     const dtStr = `${parts[0]}-${parts[1]}-${parts[2]}T12:00:00Z`;
 
-    const url = activeTab === 'supplier' ? `/api/orders/supplier/${fulfillOrder.id}/receive` : `/api/orders/client/${fulfillOrder.id}/dispatch`;
-    const body: any = {
-      status: finalStatus,
-      products: JSON.stringify(updatedProducts),
-      delivered_products: JSON.stringify(deliveredProducts),
-      remito_ref: remitoRef,
-      oc_ref: fulfillOrder.oc_ref,
-      user: user?.name || 'Admin'
-    };
-    if (activeTab === 'supplier') body.receive_date = dtStr;
-    else {
-      body.dispatch_date = dtStr;
-      body.description = isPartial ? `Entrega parcial de pedido #${fulfillOrder.id}` : `Entrega completa de pedido #${fulfillOrder.id}`;
+    let error = null;
+
+    if (activeTab === 'supplier') {
+      if (finalStatus === 'pending') { // partial
+        const { error: err1 } = await supabase.from('supplier_orders').insert([{
+          supplier: fulfillOrder.supplier,
+          products: JSON.stringify(deliveredProducts),
+          request_date: fulfillOrder.request_date,
+          transport: fulfillOrder.transport,
+          status: 'received',
+          oc_ref: fulfillOrder.oc_ref || null,
+          receive_date: dtStr,
+          remito_ref: remitoRef || null
+        }]);
+        const { error: err2 } = await supabase.from('supplier_orders').update({
+          products: JSON.stringify(updatedProducts)
+        }).eq('id', fulfillOrder.id);
+        error = err1 || err2;
+      } else {
+        const { error: err3 } = await supabase.from('supplier_orders').update({
+          status: 'received',
+          receive_date: dtStr,
+          products: JSON.stringify(deliveredProducts || fulfillOrder.products),
+          remito_ref: remitoRef || null,
+          oc_ref: fulfillOrder.oc_ref || null
+        }).eq('id', fulfillOrder.id);
+        error = err3;
+      }
+    } else {
+      // dispatch client order
+      const { error: err4 } = await supabase.from('client_orders').update({
+        status: finalStatus,
+        products: JSON.stringify(updatedProducts),
+        remito_ref: remitoRef || null,
+        oc_ref: fulfillOrder.oc_ref || null
+      }).eq('id', fulfillOrder.id);
+      error = err4;
+
+      if (!error) {
+        let fullDescription = isPartial ? `Entrega parcial de pedido #${fulfillOrder.id}` : `Entrega completa de pedido #${fulfillOrder.id}`;
+        if (fulfillOrder.oc_ref) fullDescription += ` | OC: ${fulfillOrder.oc_ref}`;
+        if (remitoRef) fullDescription += ` | Remito: ${remitoRef}`;
+
+        await supabase.from('interactions').insert([{
+          client_id: fulfillOrder.client_id,
+          type: 'entrega',
+          date: dtStr,
+          user: user?.name || 'Usuario',
+          description: fullDescription,
+          products: JSON.stringify(deliveredProducts)
+        }]);
+      }
     }
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-
-    if (res.ok) {
+    if (!error) {
       setFulfillOrder(null);
       if (activeTab === 'supplier') fetchSupplierOrders();
       else fetchClientOrders();
       alert("Operación completada con éxito");
     } else {
-      const err = await res.json();
-      alert(`Error: ${err.error || 'No se pudo procesar el pedido'}`);
+      alert(`Error: ${error.message || 'No se pudo procesar el pedido'}`);
     }
   };
 
@@ -238,45 +282,57 @@ export default function Pedidos() {
     }
 
     const payload: any = { products: JSON.stringify(validProducts) };
-    let url = `/api/orders/${activeTab}`;
-    let method = 'POST';
+    let table = activeTab === 'supplier' ? 'supplier_orders' : 'client_orders';
 
     if (editingId) {
-      url = `${url}/${editingId}/edit`;
-      method = 'POST';
-      if (activeTab === 'supplier') payload.request_date = editingOrder?.request_date;
-      else payload.order_date = editingOrder?.order_date;
+      if (activeTab === 'supplier') {
+        payload.request_date = editingOrder?.request_date;
+        payload.supplier = targetId;
+        payload.transport = transport;
+      } else {
+        payload.order_date = editingOrder?.order_date;
+        payload.client_id = Number(targetId);
+        payload.presupuesto_ref = presupuestoRef;
+      }
     } else {
       payload.status = 'pending';
+      if (activeTab === 'supplier') {
+        payload.supplier = targetId;
+        payload.transport = transport || null;
+        payload.request_date = new Date().toISOString();
+      } else {
+        payload.client_id = Number(targetId);
+        payload.presupuesto_ref = presupuestoRef || null;
+        payload.order_date = new Date().toISOString();
+      }
     }
+    payload.oc_ref = ocRef || null;
 
-    if (activeTab === 'supplier') {
-      payload.supplier = targetId;
-      payload.transport = transport;
-      payload.oc_ref = ocRef;
-      if (!editingId) payload.request_date = new Date().toISOString();
+    let error;
+    if (editingId) {
+      const { error: editErr } = await supabase.from(table).update(payload).eq('id', editingId);
+      error = editErr;
     } else {
-      payload.client_id = Number(targetId);
-      payload.presupuesto_ref = presupuestoRef;
-      payload.oc_ref = ocRef;
-      if (!editingId) payload.order_date = new Date().toISOString();
+      const { error: insErr } = await supabase.from(table).insert([payload]);
+      error = insErr;
+
+      if (!error && activeTab === 'client' && presupuestoRef) {
+        // cancel reminder
+        await supabase.from('tasks').update({ reminder_status: 'cancelled' })
+          .eq('type', 'presupuesto')
+          .eq('client_id', Number(targetId))
+          .eq('result', presupuestoRef);
+      }
     }
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.ok) {
+    if (!error) {
       setShowModal(false);
       resetForm();
       if (activeTab === 'supplier') fetchSupplierOrders();
       else fetchClientOrders();
       alert(editingId ? "Cambios guardados con éxito" : "Pedido registrado con éxito");
     } else {
-      const err = await res.json();
-      alert(`Error al guardar: ${err.error || 'Error desconocido'}`);
+      alert(`Error al guardar: ${error.message || 'Error desconocido'}`);
     }
   };
 
