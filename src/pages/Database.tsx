@@ -52,10 +52,10 @@ export default function Database() {
 
   const fetchData = async () => {
     if (activeTab === 'clients') {
-      const { data } = await supabase.from('clients').select('*');
+      const { data } = await supabase.from('clients').select('*').order('razon_social', { ascending: true });
       if (data) setClients(data);
     } else if (activeTab === 'suppliers') {
-      const { data } = await supabase.from('suppliers').select('*');
+      const { data } = await supabase.from('suppliers').select('*').order('razon_social', { ascending: true });
       if (data) {
         setSuppliers(data.map((s: any) => ({
           ...s,
@@ -63,7 +63,7 @@ export default function Database() {
         })));
       }
     } else if (activeTab === 'products') {
-      const { data } = await supabase.from('products').select('*');
+      const { data } = await supabase.from('products').select('*').order('code', { ascending: true });
       if (data) setProducts(data);
     }
   };

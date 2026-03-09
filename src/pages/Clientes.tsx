@@ -43,8 +43,8 @@ export default function Clientes() {
   useEffect(() => {
     const fetchData = async () => {
       const [{ data: clientsData }, { data: productsData }] = await Promise.all([
-        supabase.from('clients').select('*'),
-        supabase.from('products').select('*')
+        supabase.from('clients').select('*').order('razon_social', { ascending: true }),
+        supabase.from('products').select('*').order('code', { ascending: true })
       ]);
       if (clientsData) setClients(clientsData);
       if (productsData) setProductsList(productsData);

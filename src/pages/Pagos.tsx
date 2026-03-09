@@ -32,7 +32,7 @@ export default function Pagos() {
   useEffect(() => {
     fetchInvoices();
     const loadData = async () => {
-      const { data } = await supabase.from('clients').select('id, razon_social, plazo_de_pago');
+      const { data } = await supabase.from('clients').select('id, razon_social, plazo_de_pago').order('razon_social', { ascending: true });
       if (data) setClients(data as any[]);
     };
     loadData();
