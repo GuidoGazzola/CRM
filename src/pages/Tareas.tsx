@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckSquare, Clock, CheckCircle2, XCircle, AlertCircle, ChevronRight, X, RotateCcw, Bell, Truck, Plus, Minus } from 'lucide-react';
 import { useUser } from '../store/UserContext';
-import { format, addDays } from 'date-fns';
+import { format, addDays, differenceInDays } from 'date-fns';
 import { supabase } from '../supabaseClient';
 
 interface Task {
@@ -46,7 +46,7 @@ export default function Tareas() {
   };
 
   const fetchClientOrders = async () => {
-    const { data } = await supabase.from('client_orders').select('*, clients(razon_social)').order('order_date', { ascending: false });
+    const { data } = await supabase.from('client_orders').select('*, clients(razon_social)').order('order_date', { ascending: true });
     if (data) setClientOrders(data.map((o: any) => ({ ...o, client_name: o.clients?.razon_social })));
   };
 
@@ -212,113 +212,132 @@ export default function Tareas() {
     return null;
   };
 
-  const renderTaskCard = (task: OrderTask) => (
-    <div key={`${task.isOrder ? 'order-' : 'task-'}${task.id}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <h3 className="text-lg font-bold text-gray-900">{task.client_name}</h3>
-          <p className="text-sm text-gray-500">
-            {task.isOrder
-              ? `Pedido del ${format(new Date(task.created_at), 'dd/MM/yyyy')}`
-              : `Solicitado por ${task.requested_by} el ${format(new Date(task.created_at), 'dd/MM/yyyy')}`
-            }
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-2">
-          {getStatusBadge(task.status, task.type)}
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize border ${task.type === 'entrega' ? 'bg-green-50 text-green-700 border-green-200' :
-            'bg-gray-100 text-gray-800 border-gray-200'
-            }`}>
-            {task.type === 'entrega' && <Truck className="w-3 h-3 mr-1" />}
-            {task.type}
-          </span>
-        </div>
-      </div>
+  const renderTaskCard = (task: OrderTask) => {
+    let cardWrapperClass = "bg-white border-gray-200 hover:shadow-md";
+    let titleClass = "text-gray-900";
+    let dateClass = "text-gray-500";
 
-      <div className="space-y-3">
-        <p className="text-gray-700 whitespace-pre-wrap">{task.description}</p>
+    if (task.isOrder && task.status === 'pending') {
+      const daysOld = differenceInDays(new Date(), new Date(task.created_at));
+      if (daysOld > 15) {
+        cardWrapperClass = "bg-red-50 border-red-200 hover:shadow-md hover:shadow-red-50";
+        titleClass = "text-red-900";
+        dateClass = "text-red-700";
+      } else if (daysOld >= 7) {
+        cardWrapperClass = "bg-orange-50 border-orange-200 hover:shadow-md hover:shadow-orange-50";
+        titleClass = "text-orange-900";
+        dateClass = "text-orange-700";
+      }
+    }
 
-        {task.products && task.products !== '[]' && (
-          <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Productos</h4>
-            <ul className="text-sm text-gray-700 space-y-1">
-              {JSON.parse(task.products).map((p: any, i: number) => (
-                <li key={i} className="flex items-center text-xs">
-                  <ChevronRight className="w-4 h-4 text-gray-400 mr-1" />
-                  {p.code} x {p.grade ? `${p.grade} x ` : ''}{p.presentation || p.name} - {p.qty} u
-                </li>
-              ))}
-            </ul>
+    return (
+      <div key={`${task.isOrder ? 'order-' : 'task-'}${task.id}`} className={`rounded-xl shadow-sm border p-6 transition-shadow ${cardWrapperClass}`}>
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h3 className={`text-lg font-bold ${titleClass}`}>{task.client_name}</h3>
+            <p className={`text-sm ${dateClass}`}>
+              {task.isOrder
+                ? `Pedido del ${format(new Date(task.created_at), 'dd/MM/yyyy')}`
+                : `Solicitado por ${task.requested_by} el ${format(new Date(task.created_at), 'dd/MM/yyyy')}`
+              }
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            {getStatusBadge(task.status, task.type)}
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize border ${task.type === 'entrega' ? 'bg-green-50 text-green-700 border-green-200' :
+              'bg-gray-100 text-gray-800 border-gray-200'
+              }`}>
+              {task.type === 'entrega' && <Truck className="w-3 h-3 mr-1" />}
+              {task.type}
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-gray-700 whitespace-pre-wrap">{task.description}</p>
+
+          {task.products && task.products !== '[]' && (
+            <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Productos</h4>
+              <ul className="text-sm text-gray-700 space-y-1">
+                {JSON.parse(task.products).map((p: any, i: number) => (
+                  <li key={i} className="flex items-center text-xs">
+                    <ChevronRight className="w-4 h-4 text-gray-400 mr-1" />
+                    {p.code} x {p.grade ? `${p.grade} x ` : ''}{p.presentation || p.name} - {p.qty} u
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {activeTab !== 'completed' && (
+          <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end gap-3">
+            {task.type === 'prueba' && task.status === 'pending' && isAdmin && (
+              <>
+                <button
+                  onClick={() => handleStatusChange(task.id, 'rejected')}
+                  className="px-4 py-2 text-red-700 font-medium hover:bg-red-50 rounded-lg transition-colors border border-red-200"
+                >
+                  Rechazar
+                </button>
+                <button
+                  onClick={() => handleStatusChange(task.id, 'approved')}
+                  className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  Aprobar Prueba
+                </button>
+              </>
+            )}
+            {task.type === 'prueba' && task.status === 'pending' && !isAdmin && (
+              <span className="text-sm text-orange-600 flex items-center bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100">
+                <AlertCircle className="w-4 h-4 mr-1.5" /> Requiere aprobación de Admin
+              </span>
+            )}
+            {(task.type === 'presupuesto' || task.type === 'entrega' || (task.type === 'prueba' && task.status === 'approved')) && (
+              <button
+                onClick={() => {
+                  setCompletingTask(task);
+                  if (task.isOrder) {
+                    try {
+                      const prods = JSON.parse(task.products) || [];
+                      setFulfillProducts(prods.map((p: any) => ({ ...p, fulfillQty: p.qty })));
+                    } catch {
+                      setFulfillProducts([]);
+                    }
+                  }
+                }}
+                className="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors flex items-center"
+              >
+                <CheckCircle2 className="w-4 h-4 mr-2" /> Marcar como Completada
+              </button>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'completed' && task.completed_by && (
+          <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
+            <div>
+              <p className="text-sm text-gray-500">
+                Completada por <span className="font-medium text-gray-900">{task.completed_by}</span> el {format(new Date(task.completed_at!), 'dd/MM/yyyy HH:mm')}
+              </p>
+              {task.result && (
+                <p className="text-sm text-gray-700 mt-1">
+                  <span className="font-medium">{task.type === 'presupuesto' ? 'N° Presupuesto:' : 'Resultado:'}</span> {task.result}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => handleRevertTask(task)}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center border border-gray-200 hover:border-indigo-200"
+            >
+              <RotateCcw className="w-4 h-4 mr-1.5" /> Deshacer
+            </button>
           </div>
         )}
       </div>
-
-      {activeTab !== 'completed' && (
-        <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end gap-3">
-          {task.type === 'prueba' && task.status === 'pending' && isAdmin && (
-            <>
-              <button
-                onClick={() => handleStatusChange(task.id, 'rejected')}
-                className="px-4 py-2 text-red-700 font-medium hover:bg-red-50 rounded-lg transition-colors border border-red-200"
-              >
-                Rechazar
-              </button>
-              <button
-                onClick={() => handleStatusChange(task.id, 'approved')}
-                className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                Aprobar Prueba
-              </button>
-            </>
-          )}
-          {task.type === 'prueba' && task.status === 'pending' && !isAdmin && (
-            <span className="text-sm text-orange-600 flex items-center bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100">
-              <AlertCircle className="w-4 h-4 mr-1.5" /> Requiere aprobación de Admin
-            </span>
-          )}
-          {(task.type === 'presupuesto' || task.type === 'entrega' || (task.type === 'prueba' && task.status === 'approved')) && (
-            <button
-              onClick={() => {
-                setCompletingTask(task);
-                if (task.isOrder) {
-                  try {
-                    const prods = JSON.parse(task.products) || [];
-                    setFulfillProducts(prods.map((p: any) => ({ ...p, fulfillQty: p.qty })));
-                  } catch {
-                    setFulfillProducts([]);
-                  }
-                }
-              }}
-              className="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors flex items-center"
-            >
-              <CheckCircle2 className="w-4 h-4 mr-2" /> Marcar como Completada
-            </button>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'completed' && task.completed_by && (
-        <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-          <div>
-            <p className="text-sm text-gray-500">
-              Completada por <span className="font-medium text-gray-900">{task.completed_by}</span> el {format(new Date(task.completed_at!), 'dd/MM/yyyy HH:mm')}
-            </p>
-            {task.result && (
-              <p className="text-sm text-gray-700 mt-1">
-                <span className="font-medium">{task.type === 'presupuesto' ? 'N° Presupuesto:' : 'Resultado:'}</span> {task.result}
-              </p>
-            )}
-          </div>
-          <button
-            onClick={() => handleRevertTask(task)}
-            className="px-3 py-1.5 text-sm text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center border border-gray-200 hover:border-indigo-200"
-          >
-            <RotateCcw className="w-4 h-4 mr-1.5" /> Deshacer
-          </button>
-        </div>
-      )}
-    </div>
-  );
+    );
+  };
 
   const getActiveList = () => {
     switch (activeTab) {

@@ -30,7 +30,7 @@ export interface CustomerScoringInput {
   // Cantidad de familias distintas consumidas en el año (máx 3)
   uniqueProductFamilies: number;
   // true si alguno de sus productos no tiene otro cliente que lo consuma
-  hasExclusiveProduct: boolean;
+  hasMonopolyProduct: boolean;
 
   // V4 — Frecuencia de contacto / actividad
   // Días transcurridos desde el último pedido registrado
@@ -89,7 +89,7 @@ function scoreV2_billingVolume(percentile: number): number {
   if (percentile >= 90) return 10;
   if (percentile >= 75) return 7;
   if (percentile >= 50) return 5;
-  if (percentile >= 25) return 3;
+  if (percentile >= 10) return 3;
   return 1;
 }
 
@@ -98,12 +98,12 @@ function scoreV2_billingVolume(percentile: number): number {
  */
 function scoreV3_stockConcentration(
   uniqueFamilies: number,
-  hasExclusiveProduct: boolean
+  hasMonopolyProduct: boolean
 ): number {
-  if (uniqueFamilies >= 3 && !hasExclusiveProduct) return 10;
-  if (uniqueFamilies >= 3 && hasExclusiveProduct) return 7;
+  if (uniqueFamilies >= 3 && !hasMonopolyProduct) return 10;
+  if (uniqueFamilies >= 3 && hasMonopolyProduct) return 7;
   if (uniqueFamilies === 2) return 5;
-  if (uniqueFamilies === 1 && !hasExclusiveProduct) return 3;
+  if (uniqueFamilies === 1 && !hasMonopolyProduct) return 3;
   return 1; // 1 familia con producto exclusivo
 }
 
@@ -162,7 +162,7 @@ export function calculateCustomerScore(
 
   const v1 = scoreV1_paymentBehavior(input.avgActualPaymentDays, input.agreedPaymentDays);
   const v2 = scoreV2_billingVolume(input.billingPercentile);
-  const v3 = scoreV3_stockConcentration(input.uniqueProductFamilies, input.hasExclusiveProduct);
+  const v3 = scoreV3_stockConcentration(input.uniqueProductFamilies, input.hasMonopolyProduct);
   const v4 = scoreV4_contactFrequency(input.daysSinceLastOrder);
   const v5 = scoreV5_productDiversity(input.productFamilyCount);
   const v6 = scoreV6_seniority(input.yearsAsCustomer);
@@ -261,7 +261,7 @@ function generateAlerts(
     alerts.push("🟠 COBRANZA: Demora entre 51% y 100% sobre el plazo. Iniciar gestión de cobro activa.");
   }
 
-  if (input.hasExclusiveProduct) {
+  if (input.hasMonopolyProduct) {
     alerts.push("🟠 STOCK: Cliente único consumidor de uno o más productos. Riesgo de inmovilización de stock.");
   }
 
@@ -389,7 +389,7 @@ const result = calculateCustomerScore({
   agreedPaymentDays:     30,    // plazo pactado → 50% demora → V1 = 5
   billingPercentile:     78,    // top 25% → V2 = 7
   uniqueProductFamilies: 3,
-  hasExclusiveProduct:   true,  // 3 familias con exclusividad → V3 = 7
+  hasMonopolyProduct:    true,  // 3 familias con exclusividad → V3 = 7
   daysSinceLastOrder:    12,    // quincenal → V4 = 7
   productFamilyCount:    3,     // → V5 = 10
   yearsAsCustomer:       6,     // → V6 = 10
@@ -409,7 +409,7 @@ export function getClientScoring(clientId: number | string, db: any): CustomerSc
   const p = parseInt(client.plazo_de_pago);
   const agreedDays = !isNaN(p) && p > 0 ? p : 30;
 
-  const d = parseInt(client.demora_promedio_pago);
+  const d = parseInt(client.demora_de_pago);
   const delayDays = !isNaN(d) ? d : 0;
   const avgActualPaymentDays = agreedDays + delayDays;
 
@@ -428,12 +428,15 @@ export function getClientScoring(clientId: number | string, db: any): CustomerSc
   }
 
   // V3 & V5 - Familias y diversificación
-  const clientOrders = db.prepare('SELECT products FROM client_orders WHERE client_id = ? AND order_date >= DATE("now", "-12 months")').all();
+  const clientOrders = db.prepare('SELECT id, products FROM client_orders WHERE client_id = ? AND order_date >= DATE("now", "-12 months")').all(clientId);
   let categories = new Set<string>();
+  let clientProductCodes = new Set<string>();
+
   for (const o of clientOrders) {
     try {
       const prods = JSON.parse((o as any).products || "[]");
       for (const p of prods) {
+        if (p.code) clientProductCodes.add(p.code);
         const pDb = db.prepare('SELECT category FROM products WHERE code = ? OR name = ?').get(p.code || "", p.name || "");
         if (pDb && (pDb as any).category) categories.add((pDb as any).category);
       }
@@ -442,7 +445,30 @@ export function getClientScoring(clientId: number | string, db: any): CustomerSc
 
   const uniqueProductFamilies = categories.size > 0 ? categories.size : 1;
   const categoryCount = Math.min(Math.max(categories.size, 1), 3) as 1 | 2 | 3;
-  const hasExclusiveProduct = false; // Requiere análisis más pesado, mockeado a false por ahora.
+
+  let hasMonopolyProduct = false;
+  if (clientProductCodes.size > 0) {
+    const allOrders12m = db.prepare('SELECT client_id, products FROM client_orders WHERE order_date >= DATE("now", "-12 months")').all();
+    for (const code of clientProductCodes) {
+      let totalProductOrders = 0;
+      let clientProductOrders = 0;
+      for (const order of allOrders12m) {
+        try {
+          const prods = JSON.parse((order as any).products || "[]");
+          if (prods.some((p: any) => p.code === code)) {
+            totalProductOrders++;
+            if (String((order as any).client_id) === String(clientId)) {
+              clientProductOrders++;
+            }
+          }
+        } catch (e) { }
+      }
+      if (totalProductOrders > 0 && (clientProductOrders / totalProductOrders) >= 0.8) {
+        hasMonopolyProduct = true;
+        break;
+      }
+    }
+  }
 
   // V4 - Frecuencia de contacto
   const lastOrder = db.prepare('SELECT order_date FROM client_orders WHERE client_id = ? ORDER BY order_date DESC LIMIT 1').get(clientId);
@@ -459,17 +485,17 @@ export function getClientScoring(clientId: number | string, db: any): CustomerSc
 
   // V6 - Antigüedad
   let yearsAsCustomer = 0;
-  if (client.created_at) {
-    yearsAsCustomer = Math.max(0, (new Date().getTime() - new Date(client.created_at).getTime()) / (1000 * 3600 * 24 * 365.25));
+  if (client.fecha_primer_pedido) {
+    yearsAsCustomer = Math.max(0, (new Date().getTime() - new Date(client.fecha_primer_pedido).getTime()) / (1000 * 3600 * 24 * 365.25));
   }
 
   const input: CustomerScoringInput = {
     customerId: String(clientId),
     avgActualPaymentDays,
-    agreedPaymentDays,
+    agreedPaymentDays: agreedDays,
     billingPercentile: percentile,
     uniqueProductFamilies,
-    hasExclusiveProduct,
+    hasMonopolyProduct,
     daysSinceLastOrder,
     productFamilyCount: categoryCount,
     yearsAsCustomer

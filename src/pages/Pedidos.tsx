@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Truck, Calendar, CheckCircle2, Clock, ChevronDown, ChevronRight, Edit2, Trash2, Plus, Minus, History, FileText, X } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 import { useUser } from '../store/UserContext';
 import { supabase } from '../supabaseClient';
 
@@ -65,6 +65,7 @@ export default function Pedidos() {
   const [ocRef, setOcRef] = useState('');
   const [orderProducts, setOrderProducts] = useState<OrderProduct[]>([{ code: '', name: '', qty: 1 }]);
   const [editingOrder, setEditingOrder] = useState<any>(null);
+  const [orderDate, setOrderDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   // Fulfillment Modal states
   const [fulfillOrder, setFulfillOrder] = useState<any>(null);
@@ -143,6 +144,7 @@ export default function Pedidos() {
     setOcRef('');
     setOrderProducts([{ code: '', name: '', qty: 1 }]);
     setEditingId(null);
+    setOrderDate(format(new Date(), 'yyyy-MM-dd'));
   };
 
   const handleEdit = (order: any, type: 'supplier' | 'client') => {
@@ -153,9 +155,11 @@ export default function Pedidos() {
     if (type === 'supplier') {
       setTargetId(order.supplier);
       setTransport(order.transport || '');
+      setOrderDate(order.request_date ? order.request_date.split('T')[0] : format(new Date(), 'yyyy-MM-dd'));
     } else {
       setTargetId(order.client_id.toString());
       setPresupuestoRef(order.presupuesto_ref || '');
+      setOrderDate(order.order_date ? order.order_date.split('T')[0] : format(new Date(), 'yyyy-MM-dd'));
     }
     try {
       const prods = JSON.parse(order.products);
@@ -286,11 +290,11 @@ export default function Pedidos() {
 
     if (editingId) {
       if (activeTab === 'supplier') {
-        payload.request_date = editingOrder?.request_date;
+        payload.request_date = `${orderDate}T12:00:00Z`;
         payload.supplier = targetId;
         payload.transport = transport;
       } else {
-        payload.order_date = editingOrder?.order_date;
+        payload.order_date = `${orderDate}T12:00:00Z`;
         payload.client_id = Number(targetId);
         payload.presupuesto_ref = presupuestoRef;
       }
@@ -299,11 +303,11 @@ export default function Pedidos() {
       if (activeTab === 'supplier') {
         payload.supplier = targetId;
         payload.transport = transport || null;
-        payload.request_date = new Date().toISOString();
+        payload.request_date = `${orderDate}T12:00:00Z`;
       } else {
         payload.client_id = Number(targetId);
         payload.presupuesto_ref = presupuestoRef || null;
-        payload.order_date = new Date().toISOString();
+        payload.order_date = `${orderDate}T12:00:00Z`;
       }
     }
     payload.oc_ref = ocRef || null;
@@ -418,58 +422,71 @@ export default function Pedidos() {
                 <td colSpan={7} className="px-6 py-10 text-center text-gray-400 italic">No hay pedidos pendientes registrados.</td>
               </tr>
             ) : (
-              (activeTab === 'supplier' ? pendingSuppliers : pendingClients).map((order: any) => (
-                <React.Fragment key={order.id}>
-                  <tr className="bg-white border-b border-gray-100 hover:bg-indigo-50/20 transition-colors">
-                    <td className="px-4 py-4 text-center">
-                      <button onClick={() => toggleExpand(order.id)} className="text-gray-400 hover:text-indigo-600">
-                        {expandedOrders.has(order.id) ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 font-bold text-gray-900">{activeTab === 'supplier' ? order.supplier : order.client_name}</td>
-                    <td className="px-6 py-4 text-gray-500">{format(new Date(order.request_date || order.order_date), 'dd/MM/yyyy')}</td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center text-indigo-700 font-bold font-mono text-xs bg-indigo-50 px-2.5 py-1 rounded border border-indigo-100">
-                        {order.oc_ref || 'S/N'}
-                      </span>
-                    </td>
-                    {activeTab === 'supplier' && <td className="px-6 py-4 italic text-gray-400">{order.transport || '-'}</td>}
-                    <td className="px-6 py-4 text-center">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-yellow-50 text-yellow-700 border border-yellow-200">
-                        <Clock className="w-3 h-3 mr-1" /> Pendiente
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {activeTab === 'supplier' && (
-                          <button
-                            onClick={() => openFulfillModal(order)}
-                            className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700 flex items-center shadow-sm"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                            Recibir
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <div className="flex items-center gap-1 border-l pl-2 border-gray-100">
-                            <button onClick={() => handleEdit(order, activeTab)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Editar">
-                              <Edit2 className="w-4 h-4" />
+              (activeTab === 'supplier' ? pendingSuppliers : pendingClients).map((order: any) => {
+                let rowColor = "bg-white border-b border-gray-100 hover:bg-indigo-50/20 text-gray-900";
+
+                if (activeTab === 'client') {
+                  const daysOld = differenceInDays(new Date(), new Date(order.order_date));
+                  if (daysOld > 15) {
+                    rowColor = "bg-red-50 hover:bg-red-100/50 border-b border-red-200 text-red-900";
+                  } else if (daysOld >= 7) {
+                    rowColor = "bg-orange-50 hover:bg-orange-100/50 border-b border-orange-200 text-orange-900";
+                  }
+                }
+
+                return (
+                  <React.Fragment key={order.id}>
+                    <tr className={`${rowColor} transition-colors`}>
+                      <td className="px-4 py-4 text-center">
+                        <button onClick={() => toggleExpand(order.id)} className="text-gray-400 hover:text-indigo-600">
+                          {expandedOrders.has(order.id) ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 font-bold text-gray-900">{activeTab === 'supplier' ? order.supplier : order.client_name}</td>
+                      <td className="px-6 py-4 text-gray-500">{format(new Date(order.request_date || order.order_date), 'dd/MM/yyyy')}</td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center text-indigo-700 font-bold font-mono text-xs bg-indigo-50 px-2.5 py-1 rounded border border-indigo-100">
+                          {order.oc_ref || 'S/N'}
+                        </span>
+                      </td>
+                      {activeTab === 'supplier' && <td className="px-6 py-4 italic text-gray-400">{order.transport || '-'}</td>}
+                      <td className="px-6 py-4 text-center">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-yellow-50 text-yellow-700 border border-yellow-200">
+                          <Clock className="w-3 h-3 mr-1" /> Pendiente
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {activeTab === 'supplier' && (
+                            <button
+                              onClick={() => openFulfillModal(order)}
+                              className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700 flex items-center shadow-sm"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                              Recibir
                             </button>
-                            <button onClick={() => setDeletingId(order.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Eliminar">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  {expandedOrders.has(order.id) && (
-                    <tr className="bg-gray-50/30">
-                      <td colSpan={7} className="px-6 py-4 pl-14">{renderProductsTable(order.products)}</td>
+                          )}
+                          {isAdmin && (
+                            <div className="flex items-center gap-1 border-l pl-2 border-gray-100">
+                              <button onClick={() => handleEdit(order, activeTab)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Editar">
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => setDeletingId(order.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Eliminar">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              ))
+                    {expandedOrders.has(order.id) && (
+                      <tr className="bg-gray-50/30">
+                        <td colSpan={7} className="px-6 py-4 pl-14">{renderProductsTable(order.products)}</td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                )
+              })
             )}
           </tbody>
         </table>
@@ -561,7 +578,18 @@ export default function Pedidos() {
 
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
               <div className="p-8 overflow-y-auto space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Fecha de Pedido</label>
+                    <input
+                      type="date"
+                      value={orderDate}
+                      onChange={e => setOrderDate(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-gray-900 font-medium"
+                      required
+                    />
+                  </div>
+
                   <div>
                     <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">{activeTab === 'supplier' ? 'Proveedor' : 'Cliente'}</label>
                     <select
