@@ -92,8 +92,8 @@ export default function Database() {
     if (activeTab === 'clients') {
       setCuit(String(item.cuit || '').replace(/\D/g, '').slice(0, 11));
       setRazonSocial(item.razon_social || '');
-      const plazo = String(item.plazo_de_pago || '');
-      if (plazo && plazo.toLowerCase() !== 'anticipado') {
+      const plazo = String(item.plazo_de_pago !== undefined && item.plazo_de_pago !== null ? item.plazo_de_pago : '');
+      if (plazo && plazo.toLowerCase() !== 'anticipado' && plazo !== '0') {
         const match = plazo.match(/\d+/);
         setPaymentType('a_plazo');
         setPaymentDays(match ? match[0] : '');
@@ -147,7 +147,7 @@ export default function Database() {
         alert('El CUIT debe tener exactamente 11 dígitos numéricos.');
         return;
       }
-      const finalPlazo = paymentType === 'anticipado' ? 'Anticipado' : paymentDays;
+      const finalPlazo = paymentType === 'anticipado' ? 0 : Number(paymentDays);
       body = {
         razon_social: razonSocial,
         cuit: cuit,
@@ -428,7 +428,7 @@ export default function Database() {
                 <tr key={client.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{client.razon_social}</td>
                   <td className="px-6 py-4">{formatCuit(client.cuit)}</td>
-                  <td className="px-6 py-4">{client.plazo_de_pago || '-'}</td>
+                  <td className="px-6 py-4">{client.plazo_de_pago === 0 || client.plazo_de_pago === '0' || client.plazo_de_pago?.toString().toLowerCase() === 'anticipado' ? 'Anticipado' : (client.plazo_de_pago || '-')}</td>
                   <td className="px-6 py-4">
                     {client.has_catalog ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-50 text-green-700 border border-green-200">

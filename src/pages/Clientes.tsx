@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, ChevronRight, FileText, Truck, Users, Activity, X, Download } from 'lucide-react';
 import { useUser } from '../store/UserContext';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 import { formatCuit } from '../utils/formatters';
 import { supabase } from '../supabaseClient';
 
@@ -16,6 +16,8 @@ interface Client {
   has_catalog?: boolean;
   score?: number;
   alerts?: string[];
+  isDelayed?: boolean;
+  lastInteractionDate?: number;
 }
 
 interface Interaction {
@@ -39,14 +41,73 @@ export default function Clientes() {
   const [filterType, setFilterType] = useState('all');
   const [filterTime, setFilterTime] = useState('all');
   const [productsList, setProductsList] = useState<{ id: number, code: string, name: string, presentation: string }[]>([]);
+  const [orderFrequency, setOrderFrequency] = useState<{ text: string, isDelayed: boolean } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-      const [{ data: clientsData }, { data: productsData }] = await Promise.all([
-        supabase.from('clients').select('*').order('razon_social', { ascending: true }),
-        supabase.from('products').select('*').order('code', { ascending: true })
+      const [{ data: clientsData }, { data: productsData }, { data: allOrders }, { data: allInteractions }] = await Promise.all([
+        supabase.from('clients').select('*'),
+        supabase.from('products').select('*').order('code', { ascending: true }),
+        supabase.from('client_orders').select('client_id, order_date').order('order_date', { ascending: true }),
+        supabase.from('interactions').select('client_id, date').order('date', { ascending: false })
       ]);
-      if (clientsData) setClients(clientsData);
+
+      let processedClients = clientsData || [];
+
+      if (clientsData && allOrders && allInteractions) {
+        const ordersByClient: Record<number, any[]> = {};
+        allOrders.forEach(o => {
+          if (!ordersByClient[o.client_id]) ordersByClient[o.client_id] = [];
+          ordersByClient[o.client_id].push(o);
+        });
+
+        const lastInteractionByClient: Record<number, number> = {};
+        allInteractions.forEach(i => {
+          const t = new Date(i.date).getTime();
+          if (!lastInteractionByClient[i.client_id] || t > lastInteractionByClient[i.client_id]) {
+            lastInteractionByClient[i.client_id] = t;
+          }
+        });
+
+        processedClients = (processedClients as Client[]).map(client => {
+          const clientOrders = ordersByClient[client.id] || [];
+          let isDelayed = false;
+
+          if (clientOrders.length >= 3) {
+            const diffs: number[] = [];
+            for (let i = 1; i < clientOrders.length; i++) {
+              const prevDate = new Date(clientOrders[i - 1].order_date);
+              const currDate = new Date(clientOrders[i].order_date);
+              diffs.push(Math.abs(differenceInDays(currDate, prevDate)));
+            }
+            const avg = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+            const squaredDiffs = diffs.map(val => Math.pow(val - avg, 2));
+            const variance = squaredDiffs.reduce((a, b) => a + b, 0) / squaredDiffs.length;
+            const stdDev = Math.sqrt(variance);
+
+            const lastOrderDate = new Date(clientOrders[clientOrders.length - 1].order_date);
+            const daysSinceLastOrder = differenceInDays(new Date(), lastOrderDate);
+
+            if (daysSinceLastOrder > (avg + stdDev)) {
+              isDelayed = true;
+            }
+          }
+
+          return {
+            ...client,
+            isDelayed,
+            lastInteractionDate: lastInteractionByClient[client.id] || 0
+          };
+        });
+
+        processedClients.sort((a: any, b: any) => {
+          if (a.isDelayed && !b.isDelayed) return -1;
+          if (!a.isDelayed && b.isDelayed) return 1;
+          return b.lastInteractionDate - a.lastInteractionDate;
+        });
+      }
+
+      setClients(processedClients);
       if (productsData) setProductsList(productsData);
     };
     fetchData();
@@ -61,6 +122,44 @@ export default function Clientes() {
         .order('date', { ascending: false })
         .then(({ data }) => {
           if (data) setInteractions(data as Interaction[]);
+        });
+
+      // Calculate order frequency
+      setOrderFrequency({ text: 'Calculando...', isDelayed: false });
+      supabase
+        .from('client_orders')
+        .select('order_date')
+        .eq('client_id', selectedClient.id)
+        .order('order_date', { ascending: true })
+        .then(({ data }) => {
+          if (data && data.length > 1) {
+            const diffs: number[] = [];
+            for (let i = 1; i < data.length; i++) {
+              const prevDate = new Date(data[i - 1].order_date);
+              const currDate = new Date(data[i].order_date);
+              diffs.push(Math.abs(differenceInDays(currDate, prevDate)));
+            }
+
+            const avg = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+            const avgDiff = Math.round(avg);
+
+            let isDelayed = false;
+            if (data.length >= 3) {
+              const squaredDiffs = diffs.map(val => Math.pow(val - avg, 2));
+              const variance = squaredDiffs.reduce((a, b) => a + b, 0) / squaredDiffs.length;
+              const stdDev = Math.sqrt(variance);
+
+              const lastOrderDate = new Date(data[data.length - 1].order_date);
+              const daysSinceLastOrder = differenceInDays(new Date(), lastOrderDate);
+
+              if (daysSinceLastOrder > (avg + stdDev)) {
+                isDelayed = true;
+              }
+            }
+            setOrderFrequency({ text: `${avgDiff} días`, isDelayed });
+          } else {
+            setOrderFrequency({ text: 'Datos insuficientes', isDelayed: false });
+          }
         });
     }
   }, [selectedClient]);
@@ -176,7 +275,10 @@ export default function Clientes() {
                 }`}
             >
               <div>
-                <h3 className="font-semibold text-gray-900">{client.razon_social}</h3>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  {client.razon_social}
+                  {client.isDelayed && <span className="w-2 h-2 rounded-full bg-red-500" title="Cliente atrasado"></span>}
+                </h3>
                 <p className="text-sm text-gray-500">CUIT: {formatCuit(client.cuit)}</p>
               </div>
               <ChevronRight className={`w-5 h-5 ${selectedClient?.id === client.id ? 'text-indigo-500' : 'text-gray-400'}`} />
@@ -241,7 +343,7 @@ export default function Clientes() {
                 </div>
                 <div>
                   <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Plazo de Pago</h4>
-                  <p className="mt-1 text-gray-900">{selectedClient.plazo_de_pago || 'No especificado'}</p>
+                  <p className="mt-1 text-gray-900">{selectedClient.plazo_de_pago === '0' || selectedClient.plazo_de_pago === 0 || selectedClient.plazo_de_pago?.toString().toLowerCase() === 'anticipado' ? 'Anticipado' : (selectedClient.plazo_de_pago || 'No especificado')}</p>
                 </div>
                 {selectedClient.has_catalog && (
                   <div>
@@ -258,13 +360,11 @@ export default function Clientes() {
                 )}
                 {isAdmin && (
                   <div>
-                    <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">% Ventas Efectivas</h4>
-                    <div className="mt-1 flex items-center">
-                      <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
-                        <div className="bg-green-500 h-2.5 rounded-full" style={{ width: '75%' }}></div>
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">75%</span>
-                    </div>
+                    <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Frecuencia de pedido</h4>
+                    <p className={`mt-1 font-medium ${orderFrequency?.isDelayed ? 'text-red-600' : 'text-gray-900'}`}>
+                      {orderFrequency?.text || 'Calculando...'}
+                      {orderFrequency?.isDelayed && <span className="block text-xs font-bold mt-1 text-red-500 tracking-tight">⚠️ Cliente atrasado</span>}
+                    </p>
                   </div>
                 )}
               </div>
