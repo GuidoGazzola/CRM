@@ -42,7 +42,7 @@ export default function Pagos() {
   }, []);
 
   const fetchInvoices = async () => {
-    const { data } = await supabase.from('invoices').select('*, clients(razon_social)').order('issue_date', { ascending: true });
+    const { data } = await supabase.from('invoices').select('*, clients(razon_social)').order('due_date', { ascending: true });
     if (data) setInvoices(data.map((i: any) => ({ ...i, client_name: i.clients?.razon_social })));
   };
 
