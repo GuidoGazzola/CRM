@@ -14,6 +14,7 @@ interface Client {
   consumos_tipicos: string;
   demora_promedio_pago: string;
   plazo_de_pago: string;
+  fecha_primer_pedido?: string;
   has_catalog?: boolean;
   score?: number;
   alerts?: string[];

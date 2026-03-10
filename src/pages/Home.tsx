@@ -48,7 +48,7 @@ export default function Home() {
         supabase.from('invoices').select('*', { count: 'exact', head: true }).neq('status', 'completed'),
         supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('suppliers').select('razon_social, calificacion, demora_promedio_entrega, score').not('calificacion', 'is', null).order('razon_social', { ascending: true }),
-        supabase.from('clients').select('id, razon_social, calificacion, score').order('razon_social', { ascending: true })
+        supabase.from('clients').select('id, razon_social, calificacion, score, fecha_primer_pedido').order('razon_social', { ascending: true })
       ]);
 
       const tData = tasksData || [];

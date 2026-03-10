@@ -85,7 +85,7 @@ export default function Pedidos() {
     fetchClientOrders();
     const loadData = async () => {
       const [{ data: clientsData }, { data: suppliersData }, { data: productsData }] = await Promise.all([
-        supabase.from('clients').select('id, razon_social').order('razon_social', { ascending: true }),
+        supabase.from('clients').select('id, razon_social, fecha_primer_pedido').order('razon_social', { ascending: true }),
         supabase.from('suppliers').select('id, razon_social').order('razon_social', { ascending: true }),
         supabase.from('products').select('*').order('code', { ascending: true })
       ]);
