@@ -127,7 +127,7 @@ export default function Database() {
       }
       setHasCatalog(!!item.has_catalog);
       setCatalogPdf(item.catalog_pdf || null);
-      setFirstOrderDate(item.first_order_date ? item.first_order_date.split('T')[0] : '');
+      setFirstOrderDate(item.fecha_primer_pedido ? item.fecha_primer_pedido.split('T')[0] : '');
     } else if (activeTab === 'suppliers') {
       setCuit(String(item.cuit || '').replace(/\D/g, '').slice(0, 11));
       setRazonSocial(item.razon_social || '');
@@ -185,7 +185,7 @@ export default function Database() {
         plazo_de_pago: finalPlazo,
         has_catalog: hasCatalog,
         catalog_pdf: catalogPdf,
-        first_order_date: `${finalFirstOrderDate}T12:00:00Z`
+        fecha_primer_pedido: `${finalFirstOrderDate}T12:00:00Z`
       };
     } else if (activeTab === 'suppliers') {
       if (cuit.length !== 11) {
