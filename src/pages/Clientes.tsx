@@ -4,6 +4,7 @@ import { useUser } from '../store/UserContext';
 import { format, differenceInDays } from 'date-fns';
 import { formatCuit } from '../utils/formatters';
 import { supabase } from '../supabaseClient';
+import { useInsertKey } from '../hooks/useInsertKey';
 
 interface Client {
   id: number;
@@ -42,6 +43,12 @@ export default function Clientes() {
   const [filterTime, setFilterTime] = useState('all');
   const [productsList, setProductsList] = useState<{ id: number, code: string, name: string, presentation: string }[]>([]);
   const [orderFrequency, setOrderFrequency] = useState<{ text: string, isDelayed: boolean } | null>(null);
+
+  useInsertKey(() => {
+    if (selectedClient) {
+      setShowInteractionModal(true);
+    }
+  });
 
   useEffect(() => {
     const fetchData = async () => {

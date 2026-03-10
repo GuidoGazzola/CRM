@@ -3,6 +3,7 @@ import { Package, Truck, Calendar, CheckCircle2, Clock, ChevronDown, ChevronRigh
 import { format, differenceInDays } from 'date-fns';
 import { useUser } from '../store/UserContext';
 import { supabase } from '../supabaseClient';
+import { useInsertKey } from '../hooks/useInsertKey';
 
 interface SupplierOrder {
   id: number;
@@ -57,6 +58,11 @@ export default function Pedidos() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  useInsertKey(() => {
+    resetForm();
+    setShowModal(true);
+  });
 
   // Form states
   const [targetId, setTargetId] = useState(''); // client_id or supplier name

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Database as DatabaseIcon, Users, Truck, Package, Upload, Plus, X, Trash2, Download } from 'lucide-react';
 import { useUser } from '../store/UserContext';
-import Papa from 'papaparse';
+import * as Papa from 'papaparse';
 import { formatCuit } from '../utils/formatters';
 import { supabase } from '../supabaseClient';
+import { useInsertKey } from '../hooks/useInsertKey';
 
 interface ContactChannel {
   name: string;
@@ -30,6 +31,26 @@ export default function Database() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  const handleNew = () => {
+    setEditingId(null);
+    setCuit('');
+    setRazonSocial('');
+    setProductCode('');
+    setProductName('');
+    setProductCategory('Lubricante');
+    setProductSubCategory('');
+    setProductGrade('');
+    setProductPresentation('');
+    setContacts([]);
+    setPaymentType('anticipado');
+    setPaymentDays('');
+    setHasCatalog(false);
+    setCatalogPdf(null);
+    setShowModal(true);
+  };
+
+  useInsertKey(handleNew);
 
   // New Client Catalog fields
   const [hasCatalog, setHasCatalog] = useState(false);
@@ -317,23 +338,7 @@ export default function Database() {
               Importar CSV
             </button>
             <button
-              onClick={() => {
-                setEditingId(null);
-                setCuit('');
-                setRazonSocial('');
-                setProductCode('');
-                setProductName('');
-                setProductCategory('Lubricante');
-                setProductSubCategory('');
-                setProductGrade('');
-                setProductPresentation('');
-                setContacts([]);
-                setPaymentType('anticipado');
-                setPaymentDays('');
-                setHasCatalog(false);
-                setCatalogPdf(null);
-                setShowModal(true);
-              }}
+              onClick={handleNew}
               className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center"
             >
               <Plus className="w-5 h-5 mr-2" />

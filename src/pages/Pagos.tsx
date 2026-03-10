@@ -3,6 +3,7 @@ import { DollarSign, FileText, Calendar, Clock, CheckCircle2, AlertCircle } from
 import { format, differenceInDays, addDays } from 'date-fns';
 import { useUser } from '../store/UserContext';
 import { supabase } from '../supabaseClient';
+import { useInsertKey } from '../hooks/useInsertKey';
 
 interface Invoice {
   id: number;
@@ -28,6 +29,8 @@ export default function Pagos() {
   const [showNewInvoiceModal, setShowNewInvoiceModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+  useInsertKey(() => setShowNewInvoiceModal(true));
 
   useEffect(() => {
     fetchInvoices();
@@ -204,11 +207,28 @@ export default function Pagos() {
                   const remainingDays = getRemainingDays(invoice.due_date);
                   const isOverdue = remainingDays < 0;
 
+                  let rowColor = "bg-white border-b border-gray-100 hover:bg-gray-50 text-gray-900";
+                  
+                  if (invoice.status === 'pending' && isOverdue) {
+                    const daysDelayed = Math.abs(remainingDays);
+                    const delayPercentage = invoice.payment_term_days > 0 
+                      ? (daysDelayed / invoice.payment_term_days) * 100 
+                      : 100;
+
+                    if (delayPercentage > 30) {
+                      rowColor = "bg-red-50 hover:bg-red-100/50 border-b border-red-200 text-red-900";
+                    } else if (delayPercentage >= 15) {
+                      rowColor = "bg-orange-50 hover:bg-orange-100/50 border-b border-orange-200 text-orange-900";
+                    } else {
+                      rowColor = "bg-yellow-50 hover:bg-yellow-100/50 border-b border-yellow-200 text-yellow-900";
+                    }
+                  }
+
                   return (
-                    <tr key={invoice.id} className="bg-white border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-gray-900">{invoice.client_name}</td>
+                    <tr key={invoice.id} className={`${rowColor} transition-colors`}>
+                      <td className="px-6 py-4 font-medium">{invoice.client_name}</td>
                       <td className="px-6 py-4">{invoice.invoice_number}</td>
-                      <td className="px-6 py-4 font-medium text-gray-900">${invoice.amount.toLocaleString()}</td>
+                      <td className="px-6 py-4 font-medium">${invoice.amount.toLocaleString()}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center">
                           <Calendar className="w-4 h-4 mr-2 text-gray-400" />
