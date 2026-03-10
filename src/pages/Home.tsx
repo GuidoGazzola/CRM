@@ -349,6 +349,7 @@ export default function Home() {
                         label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                         labelLine={false}
                         paddingAngle={2}
+                        style={{ fontSize: '10px' }}
                       >
                         {dashboardData.chartData.entregas.map((entry: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} border="none" />

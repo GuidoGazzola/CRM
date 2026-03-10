@@ -301,8 +301,7 @@ export default function Database() {
           </div>
         )}
 
-        {isAdmin && (
-          <div className="flex gap-3">
+        <div className="flex gap-3">
             <input
               type="file"
               accept=".csv"
@@ -341,7 +340,6 @@ export default function Database() {
               Nuevo Registro
             </button>
           </div>
-        )}
       </div>
 
       <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 p-1 w-fit">

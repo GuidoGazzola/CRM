@@ -39,18 +39,19 @@ export default function Pagos() {
   }, []);
 
   const fetchInvoices = async () => {
-    const { data } = await supabase.from('invoices').select('*, clients(razon_social)').order('issue_date', { ascending: false });
+    const { data } = await supabase.from('invoices').select('*, clients(razon_social)').order('issue_date', { ascending: true });
     if (data) setInvoices(data.map((i: any) => ({ ...i, client_name: i.clients?.razon_social })));
   };
 
   const handleClientSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = parseInt(e.target.value);
     const client = clients.find(c => c.id === selectedId);
-    if (client && client.plazo_de_pago) {
-      if (client.plazo_de_pago.toLowerCase() === 'anticipado') {
+    if (client && client.plazo_de_pago !== undefined && client.plazo_de_pago !== null) {
+      const plazoStr = client.plazo_de_pago.toString();
+      if (plazoStr.toLowerCase() === 'anticipado' || plazoStr === '0') {
         setInvoiceTermDays('0');
       } else {
-        const match = client.plazo_de_pago.match(/\d+/);
+        const match = plazoStr.match(/\d+/);
         if (match) {
           setInvoiceTermDays(match[0]);
         } else {
@@ -71,13 +72,14 @@ export default function Pagos() {
     const issue_date = formData.get('issue_date') as string;
     const payment_term_days = parseInt(formData.get('payment_term_days') as string, 10);
 
-    const due_date = addDays(new Date(issue_date), payment_term_days).toISOString();
+    const dtIssue = new Date(issue_date + 'T12:00:00');
+    const due_date = addDays(dtIssue, payment_term_days).toISOString();
 
     const { error: invoiceError } = await supabase.from('invoices').insert([{
       client_id: Number(client_id),
       invoice_number,
       amount,
-      issue_date: new Date(issue_date).toISOString(),
+      issue_date: dtIssue.toISOString(),
       payment_term_days,
       due_date,
       status: 'pending'
@@ -111,9 +113,11 @@ export default function Pagos() {
     const has_retentions = formData.get('has_retentions') === 'on';
     const status = has_retentions ? 'paid_pending_retentions' : 'completed';
 
+    const paymentDt = new Date(payment_date + 'T12:00:00');
+
     const { error } = await supabase.from('invoices').update({
       status,
-      payment_date: new Date(payment_date).toISOString(),
+      payment_date: paymentDt.toISOString(),
       payment_amount,
       has_retentions
     }).eq('id', selectedInvoice.id);
@@ -216,7 +220,7 @@ export default function Pagos() {
                           <span>{format(new Date(invoice.due_date), 'dd/MM/yyyy')}</span>
                           {invoice.status === 'pending' && (
                             <span className={`text-xs font-medium mt-1 ${isOverdue ? 'text-red-600' : 'text-gray-500'}`}>
-                              {isOverdue ? `${remainingDays} días` : `Faltan ${remainingDays} días`}
+                              {isOverdue ? `Demorado ${Math.abs(remainingDays)} días` : `Faltan ${remainingDays} días`}
                             </span>
                           )}
                         </div>

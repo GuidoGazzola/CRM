@@ -79,6 +79,12 @@ export default function Tareas() {
         const formData = new FormData(e.currentTarget);
         const remito = formData.get('remito') as string;
         const recibio = formData.get('recibio') as string;
+        const deliveryDateStr = formData.get('delivery_date') as string;
+        
+        let deliveryDateISO = new Date().toISOString();
+        if (deliveryDateStr) {
+          deliveryDateISO = new Date(deliveryDateStr + 'T12:00:00').toISOString();
+        }
 
         let updatedProducts = [];
         let deliveredProducts = [];
@@ -117,7 +123,7 @@ export default function Tareas() {
         await supabase.from('interactions').insert([{
           client_id: completingTask.client_id,
           type: 'entrega',
-          date: new Date().toISOString(),
+          date: deliveryDateISO,
           user: user.name || 'Usuario',
           description: fullDescription,
           products: JSON.stringify(deliveredProducts)
@@ -449,7 +455,7 @@ export default function Tareas() {
       {/* Completion Modal */}
       {completingTask && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className={`bg-white rounded-xl shadow-xl w-full ${completingTask.type === 'entrega' ? 'max-w-2xl' : 'max-w-md'} overflow-hidden`}>
+          <div className={`bg-white rounded-xl shadow-xl w-full ${completingTask.type === 'entrega' ? 'max-w-4xl' : 'max-w-md'} overflow-hidden`}>
             <div className="p-6 border-b border-gray-200 flex justify-between items-center text-white bg-indigo-600">
               <h3 className="text-lg font-bold">
                 Completar {completingTask.type === 'prueba' ? 'Prueba' : completingTask.type === 'entrega' ? 'Entrega' : 'Presupuesto'}
@@ -461,7 +467,17 @@ export default function Tareas() {
             <form onSubmit={handleCompleteTask} className="p-6 space-y-6">
               {completingTask.type === 'entrega' ? (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-1">Fecha de entrega</label>
+                      <input
+                        type="date"
+                        name="delivery_date"
+                        defaultValue={format(new Date(), 'yyyy-MM-dd')}
+                        className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        required
+                      />
+                    </div>
                     <div>
                       <label className="block text-sm font-bold text-gray-700 mb-1">Número de remito</label>
                       <input

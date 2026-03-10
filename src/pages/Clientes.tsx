@@ -185,11 +185,14 @@ export default function Clientes() {
     const type = interactionType;
     let description = '';
     let products = '[]';
+    const dateStr = formData.get('interaction_date') as string;
+    let interactionDateISO = new Date().toISOString();
+    if (dateStr) {
+      interactionDateISO = new Date(dateStr + 'T12:00:00').toISOString();
+    }
 
     if (type === 'visita') {
       description = formData.get('description') as string;
-      const prods = formData.get('products') as string;
-      if (prods) products = JSON.stringify([{ name: prods, qty: 1 }]);
     } else if (type === 'presupuesto') {
       const desc = formData.get('description') as string;
       const solicitante = formData.get('solicitante') as string;
@@ -203,7 +206,7 @@ export default function Clientes() {
     const newInteraction = {
       client_id: selectedClient?.id,
       type,
-      date: new Date().toISOString(),
+      date: interactionDateISO,
       user: user.name,
       description,
       products
@@ -358,15 +361,13 @@ export default function Clientes() {
                     </a>
                   </div>
                 )}
-                {isAdmin && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Frecuencia de pedido</h4>
-                    <p className={`mt-1 font-medium ${orderFrequency?.isDelayed ? 'text-red-600' : 'text-gray-900'}`}>
-                      {orderFrequency?.text || 'Calculando...'}
-                      {orderFrequency?.isDelayed && <span className="block text-xs font-bold mt-1 text-red-500 tracking-tight">⚠️ Cliente atrasado</span>}
-                    </p>
-                  </div>
-                )}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Frecuencia de pedido</h4>
+                  <p className={`mt-1 font-medium ${orderFrequency?.isDelayed ? 'text-red-600' : 'text-gray-900'}`}>
+                    {orderFrequency?.text || 'Calculando...'}
+                    {orderFrequency?.isDelayed && <span className="block text-xs font-bold mt-1 text-red-500 tracking-tight">⚠️ Cliente atrasado</span>}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -456,6 +457,17 @@ export default function Clientes() {
             </div>
             <form onSubmit={handleAddInteraction} className="p-6 space-y-4">
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                <input
+                  type="date"
+                  name="interaction_date"
+                  defaultValue={format(new Date(), 'yyyy-MM-dd')}
+                  className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  required
+                />
+              </div>
+              
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
                 <select
                   name="type"
@@ -476,26 +488,11 @@ export default function Clientes() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
                     <textarea
                       name="description"
-                      rows={3}
-                      className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      rows={6}
+                      className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
                       placeholder="Detalles de la visita..."
                       required
                     ></textarea>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Productos (opcional)</label>
-                    <input
-                      type="text"
-                      name="products"
-                      list="products-list"
-                      className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                      placeholder="Seleccionar o escribir producto..."
-                    />
-                    <datalist id="products-list">
-                      {productsList.map(p => (
-                        <option key={p.id} value={p.presentation}>{p.code} - {p.name}</option>
-                      ))}
-                    </datalist>
                   </div>
                 </>
               )}
