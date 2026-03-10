@@ -466,16 +466,16 @@ export default function Pedidos() {
                               Recibir
                             </button>
                           )}
-                          {isAdmin && (
-                            <div className="flex items-center gap-1 border-l pl-2 border-gray-100">
-                              <button onClick={() => handleEdit(order, activeTab)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Editar">
-                                <Edit2 className="w-4 h-4" />
-                              </button>
+                          <div className="flex items-center gap-1 border-l pl-2 border-gray-100">
+                            <button onClick={() => handleEdit(order, activeTab)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Editar">
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            {isAdmin && (
                               <button onClick={() => setDeletingId(order.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Eliminar">
                                 <Trash2 className="w-4 h-4" />
                               </button>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -661,9 +661,9 @@ export default function Pedidos() {
                           <input
                             type="text"
                             value={p.name}
-                            readOnly
-                            className="w-full border border-gray-200 rounded-xl p-2 text-xs outline-none bg-gray-50 text-gray-500 font-medium overflow-hidden whitespace-nowrap overflow-ellipsis"
-                            placeholder="Producto"
+                            onChange={e => handleProductChange(i, 'name', e.target.value)}
+                            className={`w-full border border-gray-200 rounded-xl p-2 text-xs outline-none font-medium overflow-hidden whitespace-nowrap overflow-ellipsis ${p.code === 'MISC' ? 'bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500' : 'bg-gray-50 text-gray-800 focus:ring-2 focus:ring-indigo-500'}`}
+                            placeholder="Producto o descripción"
                           />
                         </div>
                         <div className="col-span-2">
