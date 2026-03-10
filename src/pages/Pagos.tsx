@@ -216,11 +216,11 @@ export default function Pagos() {
                       : 100;
 
                     if (delayPercentage > 30) {
-                      rowColor = "bg-red-50 hover:bg-red-100/50 border-b border-red-200 text-red-900";
+                      rowColor = "bg-red-50 hover:bg-red-100/50 border-b-2 border-red-400 text-red-900";
                     } else if (delayPercentage >= 15) {
-                      rowColor = "bg-orange-50 hover:bg-orange-100/50 border-b border-orange-200 text-orange-900";
+                      rowColor = "bg-orange-50 hover:bg-orange-100/50 border-b-2 border-orange-400 text-orange-900";
                     } else {
-                      rowColor = "bg-yellow-50 hover:bg-yellow-100/50 border-b border-yellow-200 text-yellow-900";
+                      rowColor = "bg-yellow-50 hover:bg-yellow-100/50 border-b-2 border-yellow-400 text-yellow-900";
                     }
                   }
 
