@@ -252,8 +252,7 @@ export default function Pedidos() {
       const { error: err4 } = await supabase.from('client_orders').update({
         status: finalStatus,
         products: JSON.stringify(updatedProducts),
-        remito_ref: remitoRef || null,
-        oc_ref: fulfillOrder.oc_ref || null
+        remito_ref: remitoRef || null
       }).eq('id', fulfillOrder.id);
       error = err4;
 

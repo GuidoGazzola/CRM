@@ -24,6 +24,7 @@ interface Task {
 interface OrderTask extends Task {
   isOrder?: boolean;
   order_date?: string;
+  oc_ref?: string;
 }
 
 export default function Tareas() {
@@ -109,8 +110,7 @@ export default function Tareas() {
         const { error: dispatchError } = await supabase.from('client_orders').update({
           status: finalStatus,
           products: JSON.stringify(updatedProducts),
-          remito_ref: remito,
-          oc_ref: (completingTask as any).oc_ref || null
+          remito_ref: remito
         }).eq('id', completingTask.id);
 
         if (dispatchError) throw new Error('Error al despachar el pedido');
@@ -201,11 +201,12 @@ export default function Tareas() {
       client_name: o.client_name,
       type: 'entrega',
       products: o.products,
-      description: 'Pedido listo para ser despachado',
+      description: o.oc_ref ? `OC: ${o.oc_ref}` : 'Sin OC registrada',
       requested_by: '-',
       status: 'pending',
       created_at: o.order_date,
-      isOrder: true
+      isOrder: true,
+      oc_ref: o.oc_ref
     }));
 
   const completedTasks = tasks.filter(t => t.status === 'completed' || t.status === 'rejected');
