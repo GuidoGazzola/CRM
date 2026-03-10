@@ -227,11 +227,11 @@ export default function Tareas() {
     if (task.isOrder && task.status === 'pending') {
       const daysOld = differenceInDays(new Date(), new Date(task.created_at));
       if (daysOld > 15) {
-        cardWrapperClass = "bg-red-50 border-red-200 hover:shadow-md hover:shadow-red-50";
+        cardWrapperClass = "bg-red-50 border-red-400 border-2 hover:shadow-md hover:shadow-red-50";
         titleClass = "text-red-900";
         dateClass = "text-red-700";
       } else if (daysOld >= 7) {
-        cardWrapperClass = "bg-orange-50 border-orange-200 hover:shadow-md hover:shadow-orange-50";
+        cardWrapperClass = "bg-orange-50 border-orange-400 border-2 hover:shadow-md hover:shadow-orange-50";
         titleClass = "text-orange-900";
         dateClass = "text-orange-700";
       }
