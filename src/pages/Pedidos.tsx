@@ -796,8 +796,7 @@ export default function Pedidos() {
                       className="w-6 h-6 text-indigo-600 rounded-lg border-gray-300 focus:ring-indigo-500"
                     />
                     <div className="flex flex-col">
-                      <span className="text-sm font-bold text-indigo-900">¿Es una entrega parcial?</span>
-                      <span className="text-xs text-indigo-600">Active esta opción si no está recibiendo/enviando todo el pedido hoy.</span>
+                      <span className="text-sm font-bold text-indigo-900">Entrega parcial</span>
                     </div>
                   </label>
                 </div>
