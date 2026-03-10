@@ -13,7 +13,7 @@ import {
   isWithinInterval, parseISO
 } from 'date-fns';
 
-type Timeframe = 'Semana' | 'Mes' | 'Trimestre' | 'YTD';
+type Timeframe = 'Semana' | 'Mes' | 'Trimestre' | 'Año';
 const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#f97316'];
 
 export default function Home() {
@@ -47,7 +47,7 @@ export default function Home() {
           prevStart = startOfQuarter(subQuarters(now, 1));
           prevEnd = endOfQuarter(subQuarters(now, 1));
           break;
-        case 'YTD':
+        case 'Año':
           currentStart = startOfYear(now);
           currentEnd = endOfYear(now);
           prevStart = startOfYear(subYears(now, 1));
@@ -166,7 +166,7 @@ export default function Home() {
         suppliers: suppliersData || [],
         topClients,
         financials: {
-          periodLabel: timeframe,
+          periodLabel: timeframe === 'Semana' ? `esta ${timeframe}` : `este ${timeframe}`,
           actual: { facturado: facturadoActual, aCobrar: aCobrarActual },
           anterior: { facturado: facturadoAnterior, cobrado: cobradoAnterior }
         },
@@ -230,7 +230,7 @@ export default function Home() {
               <Calendar className="w-5 h-5 mr-2 text-indigo-500" /> Métricas Financieras
             </h2>
             <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 p-1">
-              {(['Semana', 'Mes', 'Trimestre', 'YTD'] as Timeframe[]).map((t) => (
+              {(['Semana', 'Mes', 'Trimestre', 'Año'] as Timeframe[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTimeframe(t)}
@@ -256,7 +256,7 @@ export default function Home() {
                   <div className="flex items-center justify-between relative z-10">
                     <div>
                       <h3 className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-1">
-                        Facturado esta {financials.periodLabel}
+                        Facturado {financials.periodLabel}
                       </h3>
                       <p className="text-3xl font-black text-gray-900">
                         ARS {financials.actual.facturado.toLocaleString()}
@@ -275,7 +275,7 @@ export default function Home() {
                   <div className="flex items-center justify-between relative z-10">
                     <div>
                       <h3 className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-1">
-                        A cobrar este {financials.periodLabel}
+                        A cobrar {financials.periodLabel}
                       </h3>
                       <p className="text-3xl font-black text-gray-900">
                         ARS {financials.actual.aCobrar.toLocaleString()}
@@ -403,7 +403,7 @@ export default function Home() {
           <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200">
             <h2 className="text-lg font-semibold text-gray-700">Análisis de Clientes</h2>
             <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 p-1">
-              {(['Semana', 'Mes', 'Trimestre', 'YTD'] as Timeframe[]).map((t) => (
+              {(['Semana', 'Mes', 'Trimestre', 'Año'] as Timeframe[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTimeframe(t)}
