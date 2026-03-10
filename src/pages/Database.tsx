@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Database as DatabaseIcon, Users, Truck, Package, Upload, Plus, X, Trash2, Download } from 'lucide-react';
 import { useUser } from '../store/UserContext';
 import * as Papa from 'papaparse';
+import { format } from 'date-fns';
 import { formatCuit } from '../utils/formatters';
 import { supabase } from '../supabaseClient';
 import { useInsertKey } from '../hooks/useInsertKey';
@@ -47,6 +48,7 @@ export default function Database() {
     setPaymentDays('');
     setHasCatalog(false);
     setCatalogPdf(null);
+    setFirstOrderDate('');
     setShowModal(true);
   };
 
@@ -66,6 +68,7 @@ export default function Database() {
   const [productPresentation, setProductPresentation] = useState('');
   const [productGrades, setProductGrades] = useState<string[]>([]);
   const [productPresentations, setProductPresentations] = useState<string[]>([]);
+  const [firstOrderDate, setFirstOrderDate] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -124,6 +127,7 @@ export default function Database() {
       }
       setHasCatalog(!!item.has_catalog);
       setCatalogPdf(item.catalog_pdf || null);
+      setFirstOrderDate(item.first_order_date ? item.first_order_date.split('T')[0] : '');
     } else if (activeTab === 'suppliers') {
       setCuit(String(item.cuit || '').replace(/\D/g, '').slice(0, 11));
       setRazonSocial(item.razon_social || '');
@@ -169,12 +173,19 @@ export default function Database() {
         return;
       }
       const finalPlazo = paymentType === 'anticipado' ? 0 : Number(paymentDays);
+      
+      let finalFirstOrderDate = firstOrderDate;
+      if (!finalFirstOrderDate) {
+        finalFirstOrderDate = format(new Date(), 'yyyy-MM-dd');
+      }
+      
       body = {
         razon_social: razonSocial,
         cuit: cuit,
         plazo_de_pago: finalPlazo,
         has_catalog: hasCatalog,
-        catalog_pdf: catalogPdf
+        catalog_pdf: catalogPdf,
+        first_order_date: `${finalFirstOrderDate}T12:00:00Z`
       };
     } else if (activeTab === 'suppliers') {
       if (cuit.length !== 11) {
@@ -224,6 +235,7 @@ export default function Database() {
       setPaymentDays('');
       setHasCatalog(false);
       setCatalogPdf(null);
+      setFirstOrderDate('');
       fetchData();
     } else {
       alert(`Error al guardar: ${err.message}`);
@@ -639,6 +651,17 @@ export default function Database() {
                           />
                         </div>
                       )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de primer pedido (Opcional)</label>
+                      <input
+                        type="date"
+                        value={firstOrderDate}
+                        onChange={e => setFirstOrderDate(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Si se deja vacío, se usará la fecha actual.</p>
                     </div>
 
 
