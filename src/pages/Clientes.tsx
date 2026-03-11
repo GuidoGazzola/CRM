@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, ChevronRight, FileText, Truck, Users, Activity, X, Download } from 'lucide-react';
+import { Search, Plus, ChevronRight, FileText, Truck, Users, Activity, X, Download, Edit2, Trash2 } from 'lucide-react';
 import { useUser } from '../store/UserContext';
 import { format, differenceInDays } from 'date-fns';
 import { formatCuit } from '../utils/formatters';
@@ -44,6 +44,7 @@ export default function Clientes() {
   const [filterTime, setFilterTime] = useState('all');
   const [productsList, setProductsList] = useState<{ id: number, code: string, name: string, presentation: string }[]>([]);
   const [orderFrequency, setOrderFrequency] = useState<{ text: string, isDelayed: boolean } | null>(null);
+  const [editingInteraction, setEditingInteraction] = useState<Interaction | null>(null);
 
   useInsertKey(() => {
     if (selectedClient) {
@@ -119,6 +120,9 @@ export default function Clientes() {
       if (productsData) setProductsList(productsData);
     };
     fetchData();
+
+    const interval = setInterval(fetchData, 5 * 60 * 1000); // 5 minutes
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -192,7 +196,7 @@ export default function Clientes() {
     const formData = new FormData(e.currentTarget);
     const type = interactionType;
     let description = '';
-    let products = '[]';
+    const products = '[]';
     const dateStr = formData.get('interaction_date') as string;
     let interactionDateISO = new Date().toISOString();
     if (dateStr) {
@@ -211,19 +215,26 @@ export default function Clientes() {
       description = `${desc}\n\nResponsable de la prueba: ${responsable}`;
     }
 
-    const newInteraction = {
+    const payload = {
       client_id: selectedClient?.id,
       type,
       date: interactionDateISO,
-      user: user.name,
+      user: editingInteraction ? editingInteraction.user : user.name,
       description,
       products
     };
 
-    const { error: insertError } = await supabase.from('interactions').insert([newInteraction]);
+    let error;
+    if (editingInteraction) {
+      const { error: editErr } = await supabase.from('interactions').update(payload).eq('id', editingInteraction.id);
+      error = editErr;
+    } else {
+      const { error: insertError } = await supabase.from('interactions').insert([payload]);
+      error = insertError;
+    }
 
-    if (!insertError) {
-      if (type === 'presupuesto' || type === 'prueba') {
+    if (!error) {
+      if (!editingInteraction && (type === 'presupuesto' || type === 'prueba')) {
         await supabase.from('tasks').insert([{
           client_id: selectedClient?.id,
           type,
@@ -235,13 +246,34 @@ export default function Clientes() {
       }
 
       setShowInteractionModal(false);
+      setEditingInteraction(null);
       setInteractionType('visita');
       // Refresh interactions
       supabase.from('interactions').select('*').eq('client_id', selectedClient?.id).order('date', { ascending: false })
         .then(({ data }) => {
           if (data) setInteractions(data as Interaction[]);
         });
+    } else {
+      alert('Error al guardar la interacción');
     }
+  };
+
+  const handleDeleteInteraction = async (id: number) => {
+    if (!window.confirm('¿Está seguro de que desea eliminar esta interacción?')) return;
+    try {
+      const { error } = await supabase.from('interactions').delete().eq('id', id);
+      if (error) throw error;
+      setInteractions(prev => prev.filter(i => i.id !== id));
+    } catch (err) {
+      console.error('Error al eliminar:', err);
+      alert('Error al eliminar la interacción');
+    }
+  };
+
+  const handleEditClick = (interaction: Interaction) => {
+    setEditingInteraction(interaction);
+    setInteractionType(interaction.type);
+    setShowInteractionModal(true);
   };
 
   const filteredInteractions = interactions.filter(interaction => {
@@ -428,6 +460,16 @@ export default function Clientes() {
                         <span className="text-sm text-gray-500">
                           {format(new Date(interaction.date), 'dd MMM yyyy, HH:mm')}
                         </span>
+                        {isAdmin && (
+                          <div className="flex gap-2 ml-4">
+                            <button onClick={() => handleEditClick(interaction)} className="p-1 text-gray-400 hover:text-indigo-600 transition-colors" title="Editar">
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleDeleteInteraction(interaction.id)} className="p-1 text-gray-400 hover:text-red-600 transition-colors" title="Eliminar">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                       <p className="text-gray-800 mt-2">{interaction.description}</p>
                       {interaction.products && interaction.products !== '[]' && (
@@ -458,8 +500,8 @@ export default function Clientes() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-gray-900">Nueva Interacción</h3>
-              <button onClick={() => setShowInteractionModal(false)} className="text-gray-400 hover:text-gray-600">
+              <h3 className="text-lg font-bold text-gray-900">{editingInteraction ? 'Editar Interacción' : 'Nueva Interacción'}</h3>
+              <button onClick={() => { setShowInteractionModal(false); setEditingInteraction(null); }} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -469,7 +511,7 @@ export default function Clientes() {
                 <input
                   type="date"
                   name="interaction_date"
-                  defaultValue={format(new Date(), 'yyyy-MM-dd')}
+                  defaultValue={editingInteraction ? format(new Date(editingInteraction.date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')}
                   className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                   required
                 />
@@ -499,6 +541,7 @@ export default function Clientes() {
                       rows={6}
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
                       placeholder="Detalles de la visita..."
+                      defaultValue={editingInteraction?.description}
                       required
                     ></textarea>
                   </div>
@@ -514,6 +557,7 @@ export default function Clientes() {
                       rows={3}
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       placeholder="Detalles del presupuesto..."
+                      defaultValue={editingInteraction?.description?.split('\n\nSolicitante/Destinatario:')[0]}
                       required
                     ></textarea>
                   </div>
@@ -524,6 +568,7 @@ export default function Clientes() {
                       name="solicitante"
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       placeholder="Nombre del solicitante"
+                      defaultValue={editingInteraction?.description?.split('\n\nSolicitante/Destinatario: ')[1]}
                       required
                     />
                   </div>
@@ -539,6 +584,7 @@ export default function Clientes() {
                       rows={3}
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       placeholder="Detalles de la prueba..."
+                      defaultValue={editingInteraction?.description?.split('\n\nResponsable de la prueba:')[0]}
                       required
                     ></textarea>
                   </div>
@@ -549,6 +595,7 @@ export default function Clientes() {
                       name="responsable"
                       className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
                       placeholder="Nombre del responsable"
+                      defaultValue={editingInteraction?.description?.split('\n\nResponsable de la prueba: ')[1]}
                       required
                     />
                   </div>
@@ -558,7 +605,7 @@ export default function Clientes() {
               <div className="pt-4 flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowInteractionModal(false)}
+                  onClick={() => { setShowInteractionModal(false); setEditingInteraction(null); }}
                   className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancelar

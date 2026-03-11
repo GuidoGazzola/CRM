@@ -39,6 +39,13 @@ export default function Tareas() {
   useEffect(() => {
     fetchTasks();
     fetchClientOrders();
+
+    const interval = setInterval(() => {
+      fetchTasks();
+      fetchClientOrders();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchTasks = async () => {

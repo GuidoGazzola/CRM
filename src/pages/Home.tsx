@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useUser } from '../store/UserContext';
 import {
   FileText, Truck, Users, DollarSign, Building2, Package, Clock, ShieldAlert,
-  BadgeCheck, TrendingUp, TrendingDown, Calendar, Wallet, Landmark, History as HistoryIcon
+  BadgeCheck, TrendingUp, TrendingDown, Calendar, Wallet, Landmark, History as HistoryIcon, RotateCcw
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
@@ -22,6 +22,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'mi_empresa' | 'clientes' | 'proveedores'>('mi_empresa');
 
   const [dashboardData, setDashboardData] = useState<any>(null);
+  const [showCollected, setShowCollected] = useState(false);
+  const [lastReports, setLastReports] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -136,6 +138,15 @@ export default function Home() {
         })
         .reduce((acc, curr) => acc + (curr.payment_amount || 0), 0);
 
+      // New: Cobrado Periodo Actual
+      const cobradoActual = invData
+        .filter(i => {
+          if (!i.payment_date || i.status !== 'completed') return false;
+          const d = parseISO(i.payment_date);
+          return isWithinInterval(d, { start: currentStart, end: currentEnd });
+        })
+        .reduce((acc, curr) => acc + (curr.payment_amount || 0), 0);
+
       // Chart Data grouping
       const groupData = (dataRow: any[], dateField: string, type: string) => {
         const filtered = dataRow.filter(r => {
@@ -167,7 +178,7 @@ export default function Home() {
         topClients,
         financials: {
           periodLabel: timeframe === 'Semana' ? `esta ${timeframe}` : `este ${timeframe}`,
-          actual: { facturado: facturadoActual, aCobrar: aCobrarActual },
+          actual: { facturado: facturadoActual, aCobrar: aCobrarActual, cobrado: cobradoActual },
           anterior: { facturado: facturadoAnterior, cobrado: cobradoAnterior }
         },
         chartData: {
@@ -179,6 +190,22 @@ export default function Home() {
     };
 
     fetchDashboard();
+
+    const interval = setInterval(fetchDashboard, 5 * 60 * 1000); // 5 minutes
+
+    // Fetch reports for clients tab
+    const fetchReports = async () => {
+      const { data } = await supabase
+        .from('interactions')
+        .select('*, clients(razon_social)')
+        .eq('type', 'visita')
+        .order('date', { ascending: false })
+        .limit(10);
+      if (data) setLastReports(data);
+    };
+    fetchReports();
+
+    return () => clearInterval(interval);
   }, [timeframe]);
 
   if (!dashboardData) return <div className="p-4 text-gray-500 font-medium">Cargando estadísticas...</div>;
@@ -270,19 +297,33 @@ export default function Home() {
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between overflow-hidden relative group">
                   <div className="absolute right-0 top-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
-                    <Wallet className="w-32 h-32 text-orange-600" />
+                    {showCollected ? (
+                      <Landmark className="w-32 h-32 text-green-600" />
+                    ) : (
+                      <Wallet className="w-32 h-32 text-orange-600" />
+                    )}
                   </div>
                   <div className="flex items-center justify-between relative z-10">
                     <div>
-                      <h3 className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-1">
-                        A cobrar {financials.periodLabel}
-                      </h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className={`text-xs font-bold uppercase tracking-widest ${showCollected ? 'text-green-500' : 'text-orange-500'}`}>
+                          {showCollected ? 'Cobrado' : 'A cobrar'} {financials.periodLabel}
+                        </h3>
+                        <button
+                          onClick={() => setShowCollected(!showCollected)}
+                          className={`p-1 rounded-md border transition-colors ${showCollected ? 'bg-green-50 border-green-200 text-green-600' : 'bg-orange-50 border-orange-200 text-orange-600'
+                            }`}
+                          title="Alternar métrica"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                        </button>
+                      </div>
                       <p className="text-3xl font-black text-gray-900">
-                        ARS {financials.actual.aCobrar.toLocaleString()}
+                        ARS {(showCollected ? financials.actual.cobrado : financials.actual.aCobrar).toLocaleString()}
                       </p>
                     </div>
-                    <div className="p-3 bg-orange-50 text-orange-600 rounded-xl">
-                      <Clock className="w-6 h-6" />
+                    <div className={`p-3 rounded-xl ${showCollected ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'}`}>
+                      {showCollected ? <Landmark className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
                     </div>
                   </div>
                 </div>
@@ -450,8 +491,8 @@ export default function Home() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col items-center">
               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 w-full text-left">Distribución de Entregas</h3>
               {dashboardData.chartData.entregas && dashboardData.chartData.entregas.length > 0 ? (
-                <div className="h-64 w-full mt-2">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="h-64 w-full mt-2 relative">
+                  <ResponsiveContainer width="100%" height="100%" minHeight={250}>
                     <PieChart>
                       <Pie
                         data={dashboardData.chartData.entregas}
@@ -488,6 +529,50 @@ export default function Home() {
                   <p className="text-sm">No hay entregas en este periodo</p>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* New: Last Reports Section */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Últimos Informes de Visitas</h3>
+              <Link to="/clientes" className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors">Ver todos</Link>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-gray-600">
+                <thead className="bg-gray-50/80 border-b border-gray-200 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-3">Fecha</th>
+                    <th className="px-6 py-3">Cliente</th>
+                    <th className="px-6 py-3">Tipo</th>
+                    <th className="px-6 py-3">Descripción / Informe</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {lastReports.length > 0 ? lastReports.map((report, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
+                        {format(parseISO(report.date), 'dd/MM/yyyy HH:mm')}
+                      </td>
+                      <td className="px-6 py-4 font-bold text-gray-900 whitespace-nowrap">
+                        {report.clients?.razon_social}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800">
+                          {report.type}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-gray-600 line-clamp-1 max-w-xs">
+                        {report.description}
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-8 text-center text-gray-400">No hay informes de visitas recientes.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

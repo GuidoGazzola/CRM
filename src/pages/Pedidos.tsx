@@ -100,6 +100,13 @@ export default function Pedidos() {
       }
     };
     loadData();
+
+    const interval = setInterval(() => {
+      fetchSupplierOrders();
+      fetchClientOrders();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchSupplierOrders = async () => {

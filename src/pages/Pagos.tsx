@@ -29,6 +29,7 @@ export default function Pagos() {
   const [showNewInvoiceModal, setShowNewInvoiceModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [activeTab, setActiveTab] = useState<'pendientes' | 'completados'>('pendientes');
 
   useInsertKey(() => setShowNewInvoiceModal(true));
 
@@ -39,6 +40,9 @@ export default function Pagos() {
       if (data) setClients(data as any[]);
     };
     loadData();
+
+    const interval = setInterval(fetchInvoices, 5 * 60 * 1000); // 5 minutes
+    return () => clearInterval(interval);
   }, []);
 
   const fetchInvoices = async () => {
@@ -181,6 +185,29 @@ export default function Pagos() {
         </button>
       </div>
 
+      <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 p-1 w-fit">
+        <button
+          onClick={() => setActiveTab('pendientes')}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${activeTab === 'pendientes'
+            ? 'bg-indigo-50 text-indigo-700'
+            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+        >
+          <Clock className="w-4 h-4 mr-2" />
+          Pendientes
+        </button>
+        <button
+          onClick={() => setActiveTab('completados')}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${activeTab === 'completados'
+            ? 'bg-indigo-50 text-indigo-700'
+            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+        >
+          <CheckCircle2 className="w-4 h-4 mr-2" />
+          Completados
+        </button>
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-gray-500">
@@ -196,14 +223,16 @@ export default function Pagos() {
               </tr>
             </thead>
             <tbody>
-              {invoices.length === 0 ? (
+              {invoices.filter(i => activeTab === 'pendientes' ? i.status !== 'completed' : i.status === 'completed').length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
-                    No hay facturas registradas.
+                    No hay facturas {activeTab === 'pendientes' ? 'pendientes' : 'completadas'}.
                   </td>
                 </tr>
               ) : (
-                invoices.map((invoice) => {
+                invoices
+                  .filter(i => activeTab === 'pendientes' ? i.status !== 'completed' : i.status === 'completed')
+                  .map((invoice) => {
                   const remainingDays = getRemainingDays(invoice.due_date);
                   const isOverdue = remainingDays < 0;
 
