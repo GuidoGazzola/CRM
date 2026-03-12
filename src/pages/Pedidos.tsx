@@ -324,12 +324,12 @@ export default function Pedidos() {
     }
     payload.oc_ref = ocRef || null;
 
-    if (ocRef) {
+    // Solo validar duplicados si es un pedido NUEVO
+    if (!editingId && ocRef) {
       const { data: existing } = await supabase
         .from(table)
         .select('id')
         .eq('oc_ref', ocRef)
-        .neq('id', editingId || -1)
         .limit(1);
 
       if (existing && existing.length > 0) {
