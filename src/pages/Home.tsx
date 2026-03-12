@@ -10,7 +10,7 @@ import { supabase } from '../supabaseClient';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter,
   startOfYear, endOfYear, subWeeks, subMonths, subQuarters, subYears, format,
-  isWithinInterval, parseISO
+  isWithinInterval, parseISO, differenceInDays
 } from 'date-fns';
 
 type Timeframe = 'Semana' | 'Mes' | 'Trimestre' | 'Año';
@@ -70,7 +70,7 @@ export default function Home() {
         { count: presupuestosPendientes },
         { count: entregasPendientes },
         { count: pagosPendientes },
-        { count: pedidosProvPendientes },
+        { data: pendingSupplierOrders },
         { data: suppliersData },
         { data: clientsData }
       ] = await Promise.all([
@@ -80,7 +80,7 @@ export default function Home() {
         supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('type', 'presupuesto').eq('status', 'pending'),
         supabase.from('client_orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('invoices').select('*', { count: 'exact', head: true }).neq('status', 'completed'),
-        supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('supplier_orders').select('supplier, products, request_date').eq('status', 'pending'),
         supabase.from('suppliers').select('razon_social, calificacion, demora_promedio_entrega, score').not('calificacion', 'is', null).order('razon_social', { ascending: true }),
         supabase.from('clients').select('id, razon_social, calificacion, score, fecha_primer_pedido').order('razon_social', { ascending: true })
       ]);
@@ -172,7 +172,8 @@ export default function Home() {
           presupuestos: presupuestosPendientes || 0,
           entregas: entregasPendientes || 0,
           pagos: pagosPendientes || 0,
-          proveedoresPedidos: pedidosProvPendientes || 0
+          proveedoresPedidos: (pendingSupplierOrders || []).length,
+          supplierOrdersDetail: pendingSupplierOrders || []
         },
         suppliers: suppliersData || [],
         topClients,
@@ -580,19 +581,83 @@ export default function Home() {
 
       {activeTab === 'proveedores' && (
         <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
-          <div className="bg-white rounded-2xl shadow-sm border border-indigo-200 p-8 flex items-center justify-between relative overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-sm border border-indigo-200 p-8 relative overflow-hidden">
             <div className="absolute right-0 top-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -mr-10 -mt-20 opacity-50 pointer-events-none"></div>
-            <div className="relative z-10">
-              <h3 className="text-sm font-bold text-indigo-500 uppercase tracking-widest mb-2 flex items-center">
-                <Package className="w-4 h-4 mr-2" /> Pedidos por Recibir
-              </h3>
-              <p className="text-6xl font-black text-indigo-900 tracking-tight">
-                {pending.proveedoresPedidos}
-              </p>
-            </div>
-            <div className="relative z-10 hidden sm:block">
-              <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center border-4 border-white shadow-inner">
-                <Clock className="w-10 h-10 text-indigo-300 animate-pulse" />
+            <div className="relative z-10 flex flex-col md:flex-row md:items-start justify-between gap-6">
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-indigo-500 uppercase tracking-widest mb-4 flex items-center">
+                  <Package className="w-4 h-4 mr-2" /> Detalle de Mercadería por Recibir
+                </h3>
+                
+                {pending.supplierOrdersDetail && pending.supplierOrdersDetail.length > 0 ? (
+                  <div className="space-y-6">
+                    {Object.entries(
+                      pending.supplierOrdersDetail.reduce((acc: any, order: any) => {
+                        if (!acc[order.supplier]) acc[order.supplier] = [];
+                        try {
+                          const products = JSON.parse(order.products).map((p: any) => ({
+                            ...p,
+                            request_date: order.request_date
+                          }));
+                          acc[order.supplier].push(...products);
+                        } catch (e) {
+                          console.error("Error parsing products", e);
+                        }
+                        return acc;
+                      }, {})
+                    ).map(([supplier, products]: [string, any]) => (
+                      <div key={supplier} className="border-l-4 border-indigo-200 pl-4 py-1">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-lg font-bold text-indigo-900">{supplier}</h4>
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded">Pedido hace</span>
+                        </div>
+                        <ul className="space-y-1">
+                          {products
+                            .sort((a: any, b: any) => new Date(a.request_date).getTime() - new Date(b.request_date).getTime())
+                            .map((p: any, idx: number) => {
+                              const daysPast = differenceInDays(new Date(), parseISO(p.request_date));
+                              return (
+                                <li key={idx} className="text-sm text-gray-700 flex items-baseline py-1 border-b border-indigo-50 last:border-0 hover:bg-indigo-50/30 transition-colors px-1 rounded">
+                                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full mr-2 shrink-0 translate-y-[-2px]"></span>
+                                  <div className="flex-1 flex justify-between items-baseline gap-4">
+                                    <div className="flex-1">
+                                      <span className="font-bold text-indigo-900 mr-2">{p.code}</span>
+                                      <span className="text-gray-600">
+                                        {p.name || ''} {p.grade ? `(${p.grade}) ` : ''}{p.presentation ? `x ${p.presentation} ` : ''}
+                                      </span>
+                                      <span className="font-black text-indigo-600 ml-8 whitespace-nowrap">
+                                        {p.qty} u
+                                      </span>
+                                    </div>
+                                    <div className="w-20 text-right">
+                                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${daysPast > 15 ? 'bg-red-100 text-red-700' : daysPast > 7 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>
+                                        {daysPast} días
+                                      </span>
+                                    </div>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-4">
+                    <p className="text-4xl font-black text-indigo-900 tracking-tight">0</p>
+                    <p className="text-gray-500 font-medium">No hay pedidos pendientes de recepción.</p>
+                  </div>
+                )}
+              </div>
+              
+              <div className="shrink-0 hidden sm:flex flex-col items-center">
+                <div className="text-center mb-4">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Pedidos</p>
+                  <p className="text-4xl font-black text-indigo-600">{pending.proveedoresPedidos}</p>
+                </div>
+                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center border-4 border-white shadow-inner">
+                  <Clock className="w-8 h-8 text-indigo-300 animate-pulse" />
+                </div>
               </div>
             </div>
           </div>

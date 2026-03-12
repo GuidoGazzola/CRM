@@ -82,6 +82,18 @@ export default function Pagos() {
     const dtIssue = new Date(issue_date + 'T12:00:00');
     const due_date = addDays(dtIssue, payment_term_days).toISOString();
 
+    // Verification for duplicate invoice number
+    const { data: existingInvoices } = await supabase
+      .from('invoices')
+      .select('id')
+      .eq('invoice_number', invoice_number)
+      .limit(1);
+
+    if (existingInvoices && existingInvoices.length > 0) {
+      alert(`Error: Ya existe una factura con el número ${invoice_number}.`);
+      return;
+    }
+
     const { error: invoiceError } = await supabase.from('invoices').insert([{
       client_id: Number(client_id),
       invoice_number,
