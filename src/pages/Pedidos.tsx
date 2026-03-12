@@ -324,6 +324,20 @@ export default function Pedidos() {
     }
     payload.oc_ref = ocRef || null;
 
+    if (ocRef) {
+      const { data: existing } = await supabase
+        .from(table)
+        .select('id')
+        .eq('oc_ref', ocRef)
+        .neq('id', editingId || -1)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        alert(`Error: Ya existe un pedido ${activeTab === 'supplier' ? 'a proveedor' : 'de cliente'} con la OC ${ocRef}.`);
+        return;
+      }
+    }
+
     let error;
     if (editingId) {
       const { error: editErr } = await supabase.from(table).update(payload).eq('id', editingId);
